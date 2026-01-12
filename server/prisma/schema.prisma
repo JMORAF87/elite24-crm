@@ -1,0 +1,173 @@
+// This is your Prisma schema file
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  createdAt    DateTime @default(now())
+}
+
+enum Segment {
+  GC
+  COMMERCIAL_PM
+}
+
+enum Priority {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum LeadStatus {
+  NEW
+  ATTEMPTED
+  CONNECTED
+  MEETING_SET
+  QUOTE_SENT
+  WON
+  LOST
+}
+
+model Lead {
+  id             String     @id @default(uuid())
+  companyName    String
+  segment        Segment
+  focus          String?
+  address        String?
+  city           String?
+  state          String?
+  zip            String?
+  phone          String?
+  website        String?
+  
+  // Contacts
+  contactName1   String?
+  role1          String?
+  email1         String?
+  contactName2   String?
+  role2          String?
+  email2         String?
+  contactName3   String?
+  role3          String?
+  email3         String?
+  
+  // Metadata
+  contactFormURL String?
+  rating         Float?
+  reviewCount    Int?
+  
+  priority       Priority   @default(MEDIUM)
+  status         LeadStatus @default(NEW)
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  activities Activity[]
+  tasks      Task[]
+  quotes     Quote[]
+
+  @@unique([companyName, phone])
+  @@index([segment])
+  @@index([status])
+  @@index([priority])
+}
+
+enum ActivityType {
+  CALL
+  EMAIL
+  SMS
+  MEETING
+  NOTE
+  INBOUND_FORM
+}
+
+model Activity {
+  id          String       @id @default(uuid())
+  leadId      String
+  lead        Lead         @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  type        ActivityType
+  subject     String
+  outcome     String?
+  bodyPreview String?
+  openedAt    DateTime?
+  createdAt   DateTime     @default(now())
+
+  @@index([leadId])
+  @@index([createdAt])
+}
+
+model Task {
+  id        String   @id @default(uuid())
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  title     String
+  dueDate   DateTime
+  completed Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([leadId])
+  @@index([dueDate])
+  @@index([completed])
+}
+
+enum ServiceType {
+  CONSTRUCTION_SITE
+  COMMERCIAL_PROPERTY
+}
+
+enum GuardType {
+  UNARMED
+  ARMED
+  PATROL
+}
+
+enum QuoteStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  DECLINED
+}
+
+
+
+model QuoteKnowledge {
+  id          String   @id @default(uuid())
+  contentType String   // "json" or "markdown"
+  content     String   @db.Text
+  updatedAt   DateTime @updatedAt
+}
+
+model Quote {
+  id              String      @id @default(uuid())
+  leadId          String
+  lead            Lead        @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  serviceType     ServiceType
+  guardType       GuardType
+  hoursPerWeek    Float
+  hourlyRate      Float
+  monthlyEstimate Float
+  startDate       DateTime?
+  notes           String?
+  draftText       String?     @db.Text
+  pricingSnapshot Json?
+  status          QuoteStatus @default(DRAFT)
+  createdAt       DateTime    @default(now())
+
+  @@index([leadId])
+  @@index([status])
+}
+
+model SystemSetting {
+  key   String @id
+  value String
+  updatedAt DateTime @updatedAt
+}
