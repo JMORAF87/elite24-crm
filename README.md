@@ -1,16 +1,56 @@
-# React + Vite
+# elite24-crm
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+Production-ready CRM MVP built for real operations: **lead management + task automation + user system**, running on **Node.js + PostgreSQL**, deployed on **Render**.
 
-Currently, two official plugins are available:
+This repo exists as a proof asset: **rapid MVP delivery (4–6 weeks)** with a scalable backend foundation and clean deployment workflow.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+---
 
-## React Compiler
+## What it does
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- **Lead management**: capture, update, and track leads through your pipeline
+- **Task automation**: assign and manage operational tasks tied to leads/customers
+- **User system**: authentication + user access workflow (roles/permissions as applicable)
+- **Cloud deployment**: production deployment on Render with PostgreSQL
 
-## Expanding the ESLint configuration
+> Next planned layer: **observability + cost optimization** to showcase AI Ops thinking.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+---
+
+## Tech stack
+
+- **Backend:** Node.js (API service)
+- **Database:** PostgreSQL
+- **Frontend:** React (Vite)
+- **Hosting:** Render (web service + Postgres)
+
+> If your repo uses Prisma, keep it. If not, remove Prisma references below.
+
+---
+
+## Repo structure (adjust if different)
+
+A common layout:
+
+- `/server` — Node API + DB layer
+- `/client` — React UI (Vite)
+- `/docs` — architecture notes (optional)
+
+---
+
+## Local setup
+
+### Prerequisites
+- Node.js 18+ (recommended)
+- PostgreSQL 14+ (local or hosted)
+- npm / pnpm / yarn (your choice)
+
+### 1) Clone + install
+```bash
+git clone https://github.com/JMORAF87/elite24-crm.git
+cd elite24-crm
+# If monorepo:
+# npm install
+# If split:
+# cd server && npm install
+# cd ../client && npm install
