@@ -7,7 +7,7 @@ import { loginLimiter } from '../middleware/rateLimit.js';
 
 const router = express.Router();
 
-// POST /login
+// POST /api/auth/login
 router.post('/login', loginLimiter, async (req: Request, res: Response): Promise<void> => {
   try {
     const { email, password } = req.body as { email?: string; password?: string };
@@ -17,15 +17,19 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
       return;
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
+    const normalizedEmail = email.toLowerCase().trim();
 
-    // Don’t reveal whether email exists
-    if (!user || !user.passwordHash) {
+    const user = await prisma.user.findUnique({
+      where: { email: normalizedEmail }
+    });
+
+    if (!user) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
+
     if (!validPassword) {
       res.status(401).json({ error: 'Invalid credentials' });
       return;
@@ -37,15 +41,19 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
       return;
     }
 
-    const token = jwt.sign({ userId: user.id }, secret, { expiresIn: '7d' });
+    const token = jwt.sign(
+      { userId: user.id },
+      secret,
+      { expiresIn: '7d' }
+    );
 
     res.json({
       token,
       user: {
         id: user.id,
         email: user.email,
-        name: user.name,
-      },
+        name: user.name
+      }
     });
   } catch (error) {
     console.error('Login error:', error);
@@ -53,22 +61,24 @@ router.post('/login', loginLimiter, async (req: Request, res: Response): Promise
   }
 });
 
-// GET /me
+// GET /api/auth/me
 router.get('/me', authenticateToken, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    if (!req.userId) {
+    const userId = (req as any).userId ?? (req as any).user?.userId;
+
+    if (!userId) {
       res.status(401).json({ error: 'Unauthorized' });
       return;
     }
 
     const user = await prisma.user.findUnique({
-      where: { id: req.userId },
+      where: { id: userId },
       select: {
         id: true,
         email: true,
         name: true,
-        createdAt: true,
-      },
+        createdAt: true
+      }
     });
 
     if (!user) {
