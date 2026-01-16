@@ -5,40 +5,62 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import prisma from './client.js';
 
-// Load environment variables
-dotenv.config({ path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.env') });
+// Load environment variables (Render uses Dashboard env vars; local .env is optional)
+dotenv.config({
+  path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.env'),
+});
 
 const app = express();
+
+// IMPORTANT: Render runs behind a proxy (fixes X-Forwarded-For + express-rate-limit)
+app.set('trust proxy', 1);
+
 const PORT = process.env.PORT || 3001;
 
-// Middleware
-app.use(cors({
-    origin: 'http://localhost:5173', // Vite dev server
-    credentials: true
-}));
+// CORS (set CORS_ORIGIN in Render, comma-separated if multiple)
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      // allow curl/Postman (no Origin header)
+      if (!origin) return cb(null, true);
+
+      if (allowedOrigins.includes(origin)) return cb(null, true);
+
+      // block unknown origins
+      return cb(new Error(`CORS blocked for origin: ${origin}`));
+    },
+    credentials: true,
+  })
+);
+
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 // Request logging
-app.use((req, res, next) => {
-    console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
-    next();
+app.use((req, _res, next) => {
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.path}`);
+  next();
 });
 
 // Health check
-app.get('/api/health', (req: Request, res: Response) => {
-    res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get('/api/health', (_req: Request, res: Response) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
 // DB Health Check
-app.get('/api/health/db', async (req: Request, res: Response) => {
-    try {
-        await prisma.$queryRaw`SELECT 1`;
-        res.json({ ok: true, message: 'Database connected' });
-    } catch (error) {
-        console.error('DB Health Check Failed:', error);
-        res.status(500).json({ ok: false, error: 'Database connection failed' });
-    }
+app.get('/api/health/db', async (_req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ ok: true, message: 'Database connected' });
+  } catch (error) {
+    console.error('DB Health Check Failed:', error);
+    res.status(500).json({ ok: false, error: 'Database connection failed' });
+  }
 });
 
 // Routes
@@ -54,8 +76,6 @@ import publicRoutes from './routes/public.js';
 import importRoutes from './routes/import.js';
 import settingsRoutes from './routes/settings.js';
 
-import { authenticateToken } from './middleware/auth.js';
-
 app.use('/api/public', publicRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/leads', leadsRoutes);
@@ -69,23 +89,24 @@ app.use('/api/import', importRoutes);
 app.use('/api/settings', settingsRoutes);
 
 // Error handling middleware
-app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
-    console.error('Error:', err);
-    res.status(500).json({
-        error: 'Internal server error',
-        message: process.env.NODE_ENV === 'development' ? err.message : undefined
-    });
+app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+  console.error('Error:', err);
+  res.status(500).json({
+    error: 'Internal server error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined,
+  });
 });
 
 // 404 handler
-app.use((req: Request, res: Response) => {
-    res.status(404).json({ error: 'Route not found' });
+app.use((_req: Request, res: Response) => {
+  res.status(404).json({ error: 'Route not found' });
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log(`🚀 Server running on http://localhost:${PORT}`);
-    console.log(`📊 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🚀 Server running on http://localhost:${PORT}`);
+  console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
 });
 
 export default app;
+
