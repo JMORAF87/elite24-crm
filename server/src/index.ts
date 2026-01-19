@@ -1,40 +1,39 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from "cors";
 
-const allowlist = new Set([
-  "http://localhost:5173",
-  "https://elite24-crm.vercel.app",
-]);
-
-app.use(cors({
-  origin: (origin, cb) => {
-    // allow requests with no origin (curl/postman)
-    if (!origin) return cb(null, true);
-
-    if (allowlist.has(origin)) return cb(null, true);
-
-    // IMPORTANT: return false, not Error (avoid 500 on preflight)
-    return cb(null, false);
-  },
-  credentials: true,
-  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
-  allowedHeaders: ["Content-Type","Authorization"],
-}));
-
-
-app.options("*", cors());
-
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import prisma from './client.js';
-
 // Load environment variables (Render uses Dashboard env vars; local .env is optional)
 dotenv.config({
   path: path.join(path.dirname(fileURLToPath(import.meta.url)), '../../.env'),
 });
 
 const app = express();
+// --- CORS (must be after `const app = express()`) ---
+const allowedOrigins = new Set(
+  (process.env.CORS_ORIGIN || "http://localhost:5173,https://elite24-crm.vercel.app")
+    .split(",")
+    .map(s => s.trim())
+    .filter(Boolean)
+);
+
+// optional: allow all Vercel preview deploys for this project
+const isAllowedVercelPreview = (origin: string) =>
+  /^https:\/\/elite24-.*\.vercel\.app$/.test(origin);
+
+app.use(
+  cors({
+    origin: (origin, cb) => {
+      if (!origin) return cb(null, true); // curl/postman (no Origin header)
+
+      const ok = allowedOrigins.has(origin) || isAllowedVercelPreview(origin);
+      return cb(null, ok); // IMPORTANT: do NOT throw Error (prevents 500 on preflight)
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+app.options("*", cors());
 
 // IMPORTANT: Render runs behind a proxy (fixes X-Forwarded-For + express-rate-limit)
 app.set('trust proxy', 1);
