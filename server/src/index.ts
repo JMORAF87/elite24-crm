@@ -1,5 +1,24 @@
 import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
+import cors from "cors";
+
+const allowlist = [
+  "http://localhost:5173",
+  "https://elite24-crm.vercel.app",
+];
+
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin) return cb(null, true); // curl/postman
+    if (allowlist.includes(origin)) return cb(null, true);
+    return cb(new Error("CORS blocked: " + origin));
+  },
+  credentials: true,
+  methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"],
+}));
+
+app.options("*", cors());
+
 import dotenv from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';

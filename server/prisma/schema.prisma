@@ -1,5 +1,3 @@
-// This is your Prisma schema file
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -39,37 +37,37 @@ enum LeadStatus {
 }
 
 model Lead {
-  id             String     @id @default(uuid())
-  companyName    String
-  segment        Segment
-  focus          String?
-  address        String?
-  city           String?
-  state          String?
-  zip            String?
-  phone          String?
-  website        String?
-  
+  id          String   @id @default(uuid())
+  companyName String
+  segment     Segment
+  focus       String?
+  address     String?
+  city        String?
+  state       String?
+  zip         String?
+  phone       String?
+  website     String?
+
   // Contacts
-  contactName1   String?
-  role1          String?
-  email1         String?
-  contactName2   String?
-  role2          String?
-  email2         String?
-  contactName3   String?
-  role3          String?
-  email3         String?
-  
+  contactName1 String?
+  role1        String?
+  email1       String?
+  contactName2 String?
+  role2        String?
+  email2       String?
+  contactName3 String?
+  role3        String?
+  email3       String?
+
   // Metadata
   contactFormURL String?
   rating         Float?
   reviewCount    Int?
-  
-  priority       Priority   @default(MEDIUM)
-  status         LeadStatus @default(NEW)
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+
+  priority  Priority   @default(MEDIUM)
+  status    LeadStatus @default(NEW)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   activities Activity[]
   tasks      Task[]
@@ -137,12 +135,10 @@ enum QuoteStatus {
   DECLINED
 }
 
-
-
 model QuoteKnowledge {
   id          String   @id @default(uuid())
-  contentType String   // "json" or "markdown"
-  content     String   @db.Text
+  contentType String // "json" or "markdown"
+  content     String  @db.Text
   updatedAt   DateTime @updatedAt
 }
 
@@ -167,7 +163,7 @@ model Quote {
 }
 
 model SystemSetting {
-  key   String @id
-  value String
+  key       String   @id
+  value     String
   updatedAt DateTime @updatedAt
 }
