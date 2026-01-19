@@ -1,21 +1,26 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from "cors";
 
-const allowlist = [
+const allowlist = new Set([
   "http://localhost:5173",
   "https://elite24-crm.vercel.app",
-];
+]);
 
 app.use(cors({
   origin: (origin, cb) => {
-    if (!origin) return cb(null, true); // curl/postman
-    if (allowlist.includes(origin)) return cb(null, true);
-    return cb(new Error("CORS blocked: " + origin));
+    // allow requests with no origin (curl/postman)
+    if (!origin) return cb(null, true);
+
+    if (allowlist.has(origin)) return cb(null, true);
+
+    // IMPORTANT: return false, not Error (avoid 500 on preflight)
+    return cb(null, false);
   },
   credentials: true,
   methods: ["GET","POST","PUT","PATCH","DELETE","OPTIONS"],
   allowedHeaders: ["Content-Type","Authorization"],
 }));
+
 
 app.options("*", cors());
 
