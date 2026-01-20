@@ -3,20 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
-
 import prisma from "./client.js";
-
-import authRoutes from "./routes/auth.js";
-import leadsRoutes from "./routes/leads.js";
-import activitiesRoutes from "./routes/activities.js";
-import tasksRoutes from "./routes/tasks.js";
-import quotesRoutes from "./routes/quotes.js";
-import dashboardRoutes from "./routes/dashboard.js";
-import emailRoutes from "./routes/email.js";
-import aiRoutes from "./routes/ai.js";
-import publicRoutes from "./routes/public.js";
-import importRoutes from "./routes/import.js";
-import settingsRoutes from "./routes/settings.js";
 
 // Load environment variables (Render uses Dashboard env vars; local .env is optional)
 dotenv.config({
@@ -25,49 +12,51 @@ dotenv.config({
 
 const app = express();
 
-// IMPORTANT: Render runs behind a proxy
+// Render runs behind a proxy
 app.set("trust proxy", 1);
 
-const PORT = Number(process.env.PORT) || 3001;
+const PORT = process.env.PORT || 3001;
 
-/**
- * CORS
- * Set CORS_ORIGIN in Render as comma-separated list:
- *   https://elite24-crm.vercel.app,http://localhost:5173
- */
-const allowedOrigins = new Set(
-  (process.env.CORS_ORIGIN ||
-    "https://elite24-crm.vercel.app,http://localhost:5173"
-  )
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean)
-);
+// --- CORS ---
+const envOrigins = (process.env.CORS_ORIGIN || "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
-// Optional: allow Vercel preview deploys for this project
+// Safe defaults (works even if env var is missing)
+const defaultOrigins = [
+  "http://localhost:5173",
+  "https://elite24-crm.vercel.app",
+];
+
+const allowlist = new Set([...defaultOrigins, ...envOrigins]);
+
+// allow Vercel preview deploys
 const isAllowedVercelPreview = (origin: string) =>
-  /^https:\/\/elite24-crm(-[a-z0-9-]+)?\.vercel\.app$/i.test(origin) ||
-  /^https:\/\/elite24-crm-git-[a-z0-9-]+\.vercel\.app$/i.test(origin);
+  /^https:\/\/elite24-crm-git-[a-z0-9-]+\.vercel\.app$/.test(origin) ||
+  /^https:\/\/elite24-[a-z0-9-]+-jmora87s-projects\.vercel\.app$/.test(origin) ||
+  /^https:\/\/elite24-[a-z0-9-]+\.vercel\.app$/.test(origin);
 
 const corsOptions: cors.CorsOptions = {
   origin: (origin, cb) => {
-    // allow curl/postman (no Origin header)
+    // allow curl/postman (no Origin)
     if (!origin) return cb(null, true);
 
-    const ok = allowedOrigins.has(origin) || isAllowedVercelPreview(origin);
+    if (allowlist.has(origin) || isAllowedVercelPreview(origin)) {
+      return cb(null, true);
+    }
 
-    // ✅ DO NOT throw an Error here (that causes OPTIONS -> 500)
-    return cb(null, ok);
+    return cb(new Error(`CORS blocked for origin: ${origin}`));
   },
   credentials: true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
-  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
-app.options("*", cors(corsOptions)); // handle preflight with SAME options
+app.options("*", cors(corsOptions));
 
+// Body parsing
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -82,7 +71,7 @@ app.get("/api/health", (_req: Request, res: Response) => {
   res.json({ status: "ok", timestamp: new Date().toISOString() });
 });
 
-// DB Health Check
+// DB health check
 app.get("/api/health/db", async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -94,6 +83,18 @@ app.get("/api/health/db", async (_req: Request, res: Response) => {
 });
 
 // Routes
+import authRoutes from "./routes/auth.js";
+import leadsRoutes from "./routes/leads.js";
+import activitiesRoutes from "./routes/activities.js";
+import tasksRoutes from "./routes/tasks.js";
+import quotesRoutes from "./routes/quotes.js";
+import dashboardRoutes from "./routes/dashboard.js";
+import emailRoutes from "./routes/email.js";
+import aiRoutes from "./routes/ai.js";
+import publicRoutes from "./routes/public.js";
+import importRoutes from "./routes/import.js";
+import settingsRoutes from "./routes/settings.js";
+
 app.use("/api/public", publicRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/leads", leadsRoutes);
@@ -122,9 +123,8 @@ app.use((_req: Request, res: Response) => {
 
 // Start server
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🌍 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`Server running on port ${PORT}`);
+  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
 });
 
 export default app;
-
