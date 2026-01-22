@@ -3,7 +3,6 @@ import { useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import api from "../services/api";
 import { Shield } from "lucide-react";
-import axios from "axios";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -20,21 +19,20 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // With baseURL "/api", this becomes POST /api/auth/login
+      // If baseURL ends with /api, this becomes /api/auth/login (correct)
       const { data } = await api.post("/auth/login", { email, password });
+
+      // Persist token if your app expects it
+      if (data?.token) localStorage.setItem("token", data.token);
 
       login(data.token, data.user);
       navigate("/dashboard");
-    } catch (err) {
-      if (axios.isAxiosError(err)) {
-        const status = err.response?.status;
-        const msg =
-          (err.response?.data as any)?.message ||
-          (status ? `Login failed (${status})` : "Login failed (network)");
-        setError(msg);
-      } else {
-        setError("Login failed");
-      }
+    } catch (err: any) {
+      const msg =
+        err?.response?.data?.error ||
+        err?.response?.data?.message ||
+        "Invalid email or password";
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -50,17 +48,21 @@ export default function LoginPage() {
         </div>
 
         <h2 className="text-2xl font-bold text-center mb-1">Welcome Back</h2>
-        <p className="text-gray-500 text-center mb-8">Sign in to access your CRM</p>
+        <p className="text-gray-500 text-center mb-8">
+          Sign in to access your CRM
+        </p>
 
         {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded-lg mb-4 text-sm font-medium">
+          <div className="bg-red-50 text-red-500 p-3 rounded-lg mb-4 text-sm font-medium">
             {error}
           </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Email
+            </label>
             <input
               type="email"
               value={email}
@@ -73,7 +75,9 @@ export default function LoginPage() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              Password
+            </label>
             <input
               type="password"
               value={password}
