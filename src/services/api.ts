@@ -1,52 +1,52 @@
-// src/services/api.ts
-import axios, { type AxiosInstance } from "axios";
+import axios, { AxiosError } from "axios";
 
 /**
- * Base URL resolution (priority order):
- * 1) VITE_API_URL (recommended)
- * 2) VITE_API_BASE / VITE_API_BASE_URL (legacy)
- * 3) Local dev fallback -> http://localhost:3001/api
- * 4) Production fallback -> /api  (Vercel rewrite -> Render)
+ * Base URL strategy:
+ * - Production (Vercel): use "/api" and let vercel.json proxy to Render.
+ * - Local dev: default to "http://localhost:3001/api"
+ *
+ * You can override with VITE_API_URL:
+ * - VITE_API_URL="/api"
+ * - VITE_API_URL="https://elite24-api.onrender.com/api" (direct)
  */
-function resolveBaseURL(): string {
-  const env = import.meta.env as unknown as Record<string, string | undefined>;
+const rawEnvUrl = (import.meta.env.VITE_API_URL || "").trim();
+const isDev = import.meta.env.DEV;
 
-  const fromEnv =
-    env.VITE_API_URL || env.VITE_API_BASE || env.VITE_API_BASE_URL;
+export const API_BASE_URL =
+  rawEnvUrl || (isDev ? "http://localhost:3001/api" : "/api");
 
-  if (typeof fromEnv === "string" && fromEnv.trim().length > 0) {
-    return fromEnv.trim();
-  }
-
-  // Local dev default (adjust port if your backend runs elsewhere)
-  if (import.meta.env.DEV) return "http://localhost:3001/api";
-
-  // Production: use Vercel rewrite "/api/*" -> "https://elite24-api.onrender.com/api/*"
-  return "/api";
-}
-
-const api: AxiosInstance = axios.create({
-  baseURL: resolveBaseURL(),
+const api = axios.create({
+  baseURL: API_BASE_URL,
   withCredentials: true,
   timeout: 30_000,
-  headers: {
-    "Content-Type": "application/json",
-  },
+  headers: { "Content-Type": "application/json" },
 });
 
-// Attach Bearer token automatically if you store it in localStorage
+// Attach token automatically (if you store it)
 api.interceptors.request.use((config) => {
-  try {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers = config.headers ?? {};
-      (config.headers as Record<string, string>).Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    // Ignore storage errors (private mode / blocked storage / etc.)
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
 });
 
-export { api };
+// Normalize errors into a useful message
+api.interceptors.response.use(
+  (res) => res,
+  (error: AxiosError<any>) => {
+    const status = error.response?.status;
+    const data = error.response?.data as any;
+
+    const message =
+      data?.message ||
+      data?.error ||
+      (status ? `Request failed (${status})` : error.message);
+
+    return Promise.reject(new Error(message));
+  }
+);
+
 export default api;
+
