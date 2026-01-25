@@ -24,7 +24,7 @@ const api = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: true,
   timeout: 30_000,
-  // Do NOT set a global Content-Type; it breaks FormData boundaries.
+  headers: { Accept: "application/json" }, // ✅ do not force Content-Type globally
 });
 
 // Attach token automatically (if you store it)
