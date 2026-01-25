@@ -1,137 +1,74 @@
 // src/services/api.ts
-import axios, { AxiosError, AxiosInstance, AxiosRequestConfig } from "axios";
+import axios, { AxiosError, AxiosRequestConfig } from "axios";
 
-function getBaseURL(): string {
-  // In Vercel set VITE_API_URL to:
-  // - "/api" (using vercel.json rewrites), OR
-  // - "https://<your-backend>/api" (direct)
-  const envUrl = (import.meta as any).env?.VITE_API_URL as string | undefined;
-  if (envUrl && envUrl.trim().length > 0) return envUrl.trim();
+/**
+ * Base URL strategy:
+ * - Production (Vercel): use "/api" and let vercel.json proxy to Render.
+ * - Local dev: default to "http://localhost:3001/api"
+ *
+ * Override with VITE_API_URL:
+ * - VITE_API_URL="/api"
+ * - VITE_API_URL="https://elite24-api.onrender.com/api"
+ */
+const rawEnvUrl = (import.meta.env.VITE_API_URL || "").trim();
+const isDev = import.meta.env.DEV;
 
-  // Local fallback
-  const isDev = (import.meta as any).env?.DEV;
-  return isDev ? "http://localhost:3001/api" : "/api";
+export const API_BASE_URL =
+  rawEnvUrl || (isDev ? "http://localhost:3001/api" : "/api");
+
+function isFormData(val: unknown): val is FormData {
+  return typeof FormData !== "undefined" && val instanceof FormData;
 }
 
-export type ApiErrorMeta = {
-  status?: number;
-  code?: string;
-  details?: unknown;
-  url?: string;
-  method?: string;
-  isNetworkError?: boolean;
-  isTimeout?: boolean;
-};
-
-export class ApiError extends Error {
-  status?: number;
-  code?: string;
-  details?: unknown;
-  url?: string;
-  method?: string;
-  isNetworkError?: boolean;
-  isTimeout?: boolean;
-
-  constructor(message: string, meta: ApiErrorMeta = {}) {
-    super(message);
-    this.name = "ApiError";
-    Object.assign(this, meta);
-  }
-}
-
-function normalizeAxiosError(err: unknown): ApiError {
-  if (!axios.isAxiosError(err)) {
-    return new ApiError("Unexpected error", { details: err });
-  }
-
-  const ax = err as AxiosError<any>;
-  const status = ax.response?.status;
-  const url = ax.config?.url;
-  const method = ax.config?.method?.toUpperCase();
-
-  const isTimeout =
-    ax.code === "ECONNABORTED" ||
-    (typeof ax.message === "string" && ax.message.toLowerCase().includes("timeout"));
-
-  const isNetworkError = !ax.response && !!ax.request;
-
-  const serverMessage =
-    ax.response?.data?.message ||
-    ax.response?.data?.error ||
-    ax.response?.data?.detail ||
-    ax.response?.data?.msg;
-
-  const message =
-    serverMessage ||
-    (status ? `Request failed (${status})` : isNetworkError ? "Network error" : "Request failed");
-
-  return new ApiError(message, {
-    status,
-    code: ax.code,
-    details: ax.response?.data ?? ax.message,
-    url,
-    method,
-    isNetworkError,
-    isTimeout,
-  });
-}
-
-export const api: AxiosInstance = axios.create({
-  baseURL: getBaseURL(),
-  timeout: 20000,
-  headers: {
-    "Content-Type": "application/json",
-  },
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  withCredentials: true,
+  timeout: 30_000,
+  // Do NOT set a global Content-Type; it breaks FormData boundaries.
 });
 
-// Attach token if present
+// Attach token automatically (if you store it)
 api.interceptors.request.use((config) => {
-  try {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers = config.headers ?? {};
-      (config.headers as any).Authorization = `Bearer ${token}`;
-    }
-  } catch {
-    // ignore (SSR / private mode)
+  const token = localStorage.getItem("token");
+  if (token) {
+    config.headers = config.headers ?? {};
+    (config.headers as any).Authorization = `Bearer ${token}`;
   }
+
+  // If payload is FormData, allow axios to set correct multipart boundary.
+  if (isFormData(config.data)) {
+    config.headers = config.headers ?? {};
+    delete (config.headers as any)["Content-Type"];
+  } else {
+    // Default JSON only when we're sending plain objects
+    config.headers = config.headers ?? {};
+    if (!(config.headers as any)["Content-Type"]) {
+      (config.headers as any)["Content-Type"] = "application/json";
+    }
+  }
+
   return config;
 });
 
-// Normalize errors on response
+// Normalize errors into a useful message
 api.interceptors.response.use(
   (res) => res,
-  (err) => {
-    throw normalizeAxiosError(err);
+  (error: AxiosError<any>) => {
+    const status = error.response?.status;
+    const data = error.response?.data as any;
+
+    const message =
+      data?.message ||
+      data?.error ||
+      (status ? `Request failed (${status})` : error.message);
+
+    // Preserve original details for debugging
+    const err = new Error(message) as Error & { status?: number; data?: any };
+    err.status = status;
+    err.data = data;
+
+    return Promise.reject(err);
   }
 );
 
-// Convenience wrappers (optional)
-export async function apiGet<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-  const res = await api.get<T>(url, config);
-  return res.data;
-}
-export async function apiPost<T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
-  const res = await api.post<T>(url, body, config);
-  return res.data;
-}
-export async function apiPut<T>(url: string, body?: unknown, config?: AxiosRequestConfig): Promise<T> {
-  const res = await api.put<T>(url, body, config);
-  return res.data;
-}
-export async function apiDelete<T>(url: string, config?: AxiosRequestConfig): Promise<T> {
-  const res = await api.delete<T>(url, config);
-  return res.data;
-}
-
-// Healthcheck helper (expects backend route: GET /api/health)
-export async function healthCheck(): Promise<{ ok: boolean; status?: number; message?: string }> {
-  try {
-    const res = await api.get("/health", { timeout: 6000 });
-    return { ok: true, status: res.status };
-  } catch (e) {
-    const err = e instanceof ApiError ? e : normalizeAxiosError(e);
-    return { ok: false, status: err.status, message: err.message };
-  }
-}
-
+export default api;
