@@ -4,13 +4,23 @@ import api from "../services/api";
 
 type Segment = "CONSTRUCTION_GC" | "COMMERCIAL_PM" | "EVENT";
 
+type LeadForm = {
+  name: string;
+  company: string;
+  email: string;
+  phone: string;
+  segment: Segment;
+  city: string;
+  notes: string;
+};
+
 export default function LandingPage() {
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState<LeadForm>({
     name: "",
     company: "",
     email: "",
     phone: "",
-    segment: "COMMERCIAL_PM" as Segment,
+    segment: "COMMERCIAL_PM",
     city: "",
     notes: "",
   });
@@ -18,12 +28,12 @@ export default function LandingPage() {
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // JSON post; api.ts handles baseURL (/api in prod, localhost in dev)
+      // JSON POST. api.ts handles baseURL (/api on Vercel, localhost in dev)
       await api.post("/public/leads", formData);
       setSubmitted(true);
     } catch (err: any) {
@@ -73,10 +83,12 @@ export default function LandingPage() {
             SERVICES IN AMARILLO
           </span>
         </h1>
+
         <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-          Professional armed and unarmed guards for construction sites, commercial properties, and
-          events. 24/7 protection you can trust.
+          Professional armed and unarmed guards for construction sites, commercial
+          properties, and events. 24/7 protection you can trust.
         </p>
+
         <div className="flex justify-center gap-4">
           <a
             href="#contact"
@@ -84,22 +96,27 @@ export default function LandingPage() {
           >
             SECURE YOUR SITE
           </a>
-          <button
-            type="button"
+          <a
+            href="#contact"
             className="px-8 py-4 border-2 border-white font-bold text-lg hover:bg-white hover:text-black transition"
           >
             LEARN MORE
-          </button>
+          </a>
         </div>
       </header>
 
       <div id="contact" className="max-w-4xl mx-auto py-20 px-6">
         <div className="bg-white text-black p-8 md:p-12 rounded-2xl shadow-2xl">
-          <h2 className="text-3xl font-bold mb-8 text-center">Get Your Free Security Analysis</h2>
+          <h2 className="text-3xl font-bold mb-8 text-center">
+            Get Your Free Security Analysis
+          </h2>
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
-              <label className="font-bold text-sm uppercase text-gray-500">I need security for</label>
+              <label className="font-bold text-sm uppercase text-gray-500">
+                I need security for
+              </label>
+
               <select
                 className="w-full mt-1 p-3 border-2 border-gray-200 rounded-lg focus:border-neon-pink focus:outline-none"
                 value={formData.segment}
@@ -130,7 +147,7 @@ export default function LandingPage() {
                 required
                 className="w-full mt-1 p-3 border-2 border-gray-200 rounded-lg focus:border-neon-pink focus:outline-none"
                 placeholder="Amarillo Construction Info"
-                value={formData.company}
+                valueanyObservationsvalue={formData.company}
                 onChange={(e) => setFormData({ ...formData, company: e.target.value })}
               />
             </div>
@@ -170,7 +187,9 @@ export default function LandingPage() {
             </div>
 
             <div className="md:col-span-2">
-              <label className="font-bold text-sm uppercase text-gray-500">Special Requirements</label>
+              <label className="font-bold text-sm uppercase text-gray-500">
+                Special Requirements
+              </label>
               <textarea
                 className="w-full mt-1 p-3 border-2 border-gray-200 rounded-lg focus:border-neon-pink focus:outline-none h-24"
                 placeholder="Overnight patrol needed..."
