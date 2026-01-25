@@ -4,7 +4,7 @@ import api from "../services/api";
 
 type Segment = "CONSTRUCTION_GC" | "COMMERCIAL_PM" | "EVENT";
 
-type LeadForm = {
+type LeadFormData = {
   name: string;
   company: string;
   email: string;
@@ -15,7 +15,7 @@ type LeadForm = {
 };
 
 export default function LandingPage() {
-  const [formData, setFormData] = useState<LeadForm>({
+  const [formData, setFormData] = useState<LeadFormData>({
     name: "",
     company: "",
     email: "",
@@ -28,16 +28,19 @@ export default function LandingPage() {
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
 
     try {
-      // JSON POST. api.ts handles baseURL (/api on Vercel, localhost in dev)
+      // JSON post; api.ts handles baseURL (/api in prod, localhost in dev)
       await api.post("/public/leads", formData);
       setSubmitted(true);
     } catch (err: any) {
-      alert(err?.message || "Something went wrong. Please try again or call us.");
+      const msg =
+        err?.message ||
+        "Something went wrong. Please try again or call us.";
+      alert(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -83,12 +86,10 @@ export default function LandingPage() {
             SERVICES IN AMARILLO
           </span>
         </h1>
-
         <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">
           Professional armed and unarmed guards for construction sites, commercial
           properties, and events. 24/7 protection you can trust.
         </p>
-
         <div className="flex justify-center gap-4">
           <a
             href="#contact"
@@ -116,7 +117,6 @@ export default function LandingPage() {
               <label className="font-bold text-sm uppercase text-gray-500">
                 I need security for
               </label>
-
               <select
                 className="w-full mt-1 p-3 border-2 border-gray-200 rounded-lg focus:border-neon-pink focus:outline-none"
                 value={formData.segment}
@@ -147,7 +147,7 @@ export default function LandingPage() {
                 required
                 className="w-full mt-1 p-3 border-2 border-gray-200 rounded-lg focus:border-neon-pink focus:outline-none"
                 placeholder="Amarillo Construction Info"
-                valueanyObservationsvalue={formData.company}
+                value={formData.company}
                 onChange={(e) => setFormData({ ...formData, company: e.target.value })}
               />
             </div>
