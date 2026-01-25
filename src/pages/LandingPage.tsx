@@ -19,7 +19,11 @@ export default function LandingPage() {
         e.preventDefault();
         setIsSubmitting(true);
         try {
-            await axios.post('http://localhost:3001/api/public/leads', formData);
+            import api from "../services/api";
+
+await api.post("/public/leads", formData, {
+  headers: { "Content-Type": "multipart/form-data" },
+});
             setSubmitted(true);
         } catch (err) {
             alert('Something went wrong. Please try again or call us.');
