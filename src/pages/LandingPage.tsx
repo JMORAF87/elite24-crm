@@ -1,10 +1,11 @@
+// src/pages/LandingPage.tsx
 import React, { useState } from "react";
 import { Shield, CheckCircle } from "lucide-react";
 import api from "../services/api";
 
 type Segment = "CONSTRUCTION_GC" | "COMMERCIAL_PM" | "EVENT";
 
-type LeadFormData = {
+type LeadForm = {
   name: string;
   company: string;
   email: string;
@@ -15,7 +16,7 @@ type LeadFormData = {
 };
 
 export default function LandingPage() {
-  const [formData, setFormData] = useState<LeadFormData>({
+  const [formData, setFormData] = useState<LeadForm>({
     name: "",
     company: "",
     email: "",
@@ -27,20 +28,23 @@ export default function LandingPage() {
 
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsSubmitting(true);
+    setErrorMsg(null);
 
     try {
-      // JSON post; api.ts handles baseURL (/api in prod, localhost in dev)
+      // Default JSON POST. api.ts already handles baseURL (/api in prod, localhost in dev)
       await api.post("/public/leads", formData);
       setSubmitted(true);
     } catch (err: any) {
       const msg =
+        err?.response?.data?.message ||
         err?.message ||
         "Something went wrong. Please try again or call us.";
-      alert(msg);
+      setErrorMsg(msg);
     } finally {
       setIsSubmitting(false);
     }
@@ -87,8 +91,8 @@ export default function LandingPage() {
           </span>
         </h1>
         <p className="text-xl text-gray-400 max-w-2xl mx-auto mb-10">
-          Professional armed and unarmed guards for construction sites, commercial
-          properties, and events. 24/7 protection you can trust.
+          Professional armed and unarmed guards for construction sites, commercial properties,
+          and events. 24/7 protection you can trust.
         </p>
         <div className="flex justify-center gap-4">
           <a
@@ -97,26 +101,25 @@ export default function LandingPage() {
           >
             SECURE YOUR SITE
           </a>
-          <a
-            href="#contact"
-            className="px-8 py-4 border-2 border-white font-bold text-lg hover:bg-white hover:text-black transition"
-          >
+          <button className="px-8 py-4 border-2 border-white font-bold text-lg hover:bg-white hover:text-black transition">
             LEARN MORE
-          </a>
+          </button>
         </div>
       </header>
 
       <div id="contact" className="max-w-4xl mx-auto py-20 px-6">
         <div className="bg-white text-black p-8 md:p-12 rounded-2xl shadow-2xl">
-          <h2 className="text-3xl font-bold mb-8 text-center">
-            Get Your Free Security Analysis
-          </h2>
+          <h2 className="text-3xl font-bold mb-8 text-center">Get Your Free Security Analysis</h2>
+
+          {errorMsg && (
+            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-red-800">
+              {errorMsg}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div className="md:col-span-2">
-              <label className="font-bold text-sm uppercase text-gray-500">
-                I need security for
-              </label>
+              <label className="font-bold text-sm uppercase text-gray-500">I need security for</label>
               <select
                 className="w-full mt-1 p-3 border-2 border-gray-200 rounded-lg focus:border-neon-pink focus:outline-none"
                 value={formData.segment}
