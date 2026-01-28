@@ -1,5 +1,13 @@
-module.exports = (req, res) => {
-  // Always return 200 with an empty array for "no activity yet"
-  res.setHeader("Content-Type", "application/json");
-  res.status(200).send(JSON.stringify([]));
-};
+export default function handler(req, res) {
+  if (req.method !== 'GET') {
+    res.statusCode = 405;
+    res.setHeader('Allow', 'GET');
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.end(JSON.stringify({ error: 'Method not allowed' }));
+    return;
+  }
+
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.end('[]'); // no activity yet
+}
