@@ -3,7 +3,6 @@ import { Resend } from "resend";
 const resend = new Resend(process.env.RESEND_API_KEY);
 
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.setHeader("Allow", "POST");
@@ -13,32 +12,26 @@ export default async function handler(req, res) {
   }
 
   try {
-    // Vercel functions sometimes give body as string; handle both
     const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
 
-    const { to, subject, html, text, leadId } = body || {};
-    if (!to || !subject || (!html && !text)) {
+    const { to, subject, text, html, leadId } = body || {};
+    if (!to || !subject || (!text && !html)) {
       res.statusCode = 400;
       res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.end(JSON.stringify({ error: "Missing required fields: to, subject, (html or text)" }));
+      res.end(JSON.stringify({ error: "Missing required fields: to, subject, text|html" }));
       return;
     }
 
-    const from = process.env.RESEND_FROM; // e.g. "Elite24 CRM <onboarding@resend.dev>" or "Elite24 <sales@yourdomain.com>"
-    if (!from) {
-      res.statusCode = 500;
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.end(JSON.stringify({ error: "Server misconfigured: RESEND_FROM missing" }));
-      return;
-    }
+    // Use a verified sender in Resend (recommended: your domain).
+    const from = process.env.RESEND_FROM || "Demo <onboarding@resend.dev>";
 
     const result = await resend.emails.send({
       from,
       to,
       subject,
-      html,
       text,
-      tags: leadId ? [{ name: "leadId", value: String(leadId) }] : undefined,
+      html: html || (text ? `<p>${String(text).replaceAll("\n", "<br/>")}</p>` : undefined),
+      headers: leadId ? { "X-Lead-Id": String(leadId) } : undefined,
     });
 
     res.statusCode = 200;
@@ -47,6 +40,6 @@ export default async function handler(req, res) {
   } catch (err) {
     res.statusCode = 500;
     res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(JSON.stringify({ ok: false, error: err?.message || String(err) }));
+    res.end(JSON.stringify({ ok: false, error: err?.message || "Unknown error" }));
   }
 }
