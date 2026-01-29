@@ -1,4 +1,3 @@
-// src/pages/LeadsPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, X, Building2, User } from 'lucide-react';
@@ -55,13 +54,14 @@ export default function LeadsPage() {
       });
 
       // Remove empty filters
-      Object.keys(filters).forEach(key => {
-        if (!filters[key as keyof typeof filters]) params.delete(key);
+      Object.keys(filters).forEach((key) => {
+        const k = key as keyof typeof filters;
+        if (!filters[k]) params.delete(key);
       });
 
-      const { data } = await api.get(`/leads?${params}`);
-      setLeads(data.leads);
-      setTotalPages(data.pagination.totalPages);
+      const { data } = await api.get(`/leads?${params.toString()}`);
+      setLeads(data.leads || []);
+      setTotalPages(data?.pagination?.totalPages || 1);
     } catch (error) {
       console.error('Failed to fetch leads:', error);
     } finally {
@@ -125,6 +125,22 @@ export default function LeadsPage() {
     }
   };
 
+  const getLastActivityText = (lead: any) => {
+    // 1) Backend-provided activities (if present)
+    const backendISO =
+      lead?.activities?.length > 0 ? lead.activities[0]?.createdAt : null;
+
+    // 2) Local activity store fallback (what we’re using for demo realism)
+    const localISO = getLastActivityISO?.(lead?.id);
+
+    const iso = backendISO || localISO;
+    if (!iso) return 'No activity';
+
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return 'No activity';
+    return d.toLocaleDateString();
+  };
+
   return (
     <PageShell
       title="Leads"
@@ -155,10 +171,11 @@ export default function LeadsPage() {
               <button
                 key={seg}
                 onClick={() => setFilters(prev => ({ ...prev, segment: seg }))}
-                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${filters.segment === seg
-                  ? 'bg-indigo-600 text-white border-indigo-600'
-                  : 'bg-white text-slate-500 border-gray-200 hover:border-gray-300'
-                  }`}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-colors border ${
+                  filters.segment === seg
+                    ? 'bg-indigo-600 text-white border-indigo-600'
+                    : 'bg-white text-slate-500 border-gray-200 hover:border-gray-300'
+                }`}
               >
                 {seg === '' ? 'All Segments' : seg === 'GC' ? 'General Contractors' : 'Property Managers'}
               </button>
@@ -182,8 +199,12 @@ export default function LeadsPage() {
 
             <tbody className="divide-y divide-gray-50">
               {isLoading ? (
-                <tr><td colSpan={6} className="p-8 text-center text-slate-400">Loading leads...</td></tr>
-              ) : leads.map(lead => (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-slate-400">
+                    Loading leads...
+                  </td>
+                </tr>
+              ) : leads.map((lead) => (
                 <tr
                   key={lead.id}
                   onClick={() => navigate(`/leads/${lead.id}`)}
@@ -195,8 +216,12 @@ export default function LeadsPage() {
                         <Building2 size={16} />
                       </div>
                       <div>
-                        <div className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">{lead.companyName}</div>
-                        <div className="text-xs text-slate-500">{lead.city || 'No City'}, {lead.state || 'State'}</div>
+                        <div className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
+                          {lead.companyName}
+                        </div>
+                        <div className="text-xs text-slate-500">
+                          {lead.city || 'No City'}, {lead.state || 'State'}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -207,8 +232,12 @@ export default function LeadsPage() {
                         {lead.contactName1 ? lead.contactName1.charAt(0) : <User size={12} />}
                       </div>
                       <div>
-                        <div className="text-sm font-medium text-slate-700">{lead.contactName1 || 'No Contact'}</div>
-                        <div className="text-[10px] text-slate-400 uppercase">{lead.role1 || ''}</div>
+                        <div className="text-sm font-medium text-slate-700">
+                          {lead.contactName1 || 'No Contact'}
+                        </div>
+                        <div className="text-[10px] text-slate-400 uppercase">
+                          {lead.role1 || ''}
+                        </div>
                       </div>
                     </div>
                   </td>
@@ -221,26 +250,25 @@ export default function LeadsPage() {
                     <Badge variant={getPriorityVariant(lead.priority)}>{lead.priority}</Badge>
                   </td>
 
-                  {/* ✅ UPDATED: Local activity first, then API fallback */}
                   <td className="p-4 text-sm text-slate-500">
-                    {(() => {
-                      const localLast = getLastActivityISO(lead.id);
-                      const apiLast =
-                        lead.activities && lead.activities.length > 0
-                          ? lead.activities[0].createdAt
-                          : null;
-                      const last = localLast || apiLast;
-                      return last ? new Date(last).toLocaleDateString() : 'No activity';
-                    })()}
+                    {getLastActivityText(lead)}
                   </td>
 
+                  {/* Action Cell: Send Email + Edit */}
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">
-                      <SendEmailButton
-                        to={lead.email1}
-                        leadId={lead.id}
-                        companyName={lead.companyName}
-                      />
+                      {lead.email1 ? (
+                        <SendEmailButton
+                          to={lead.email1}
+                          leadId={lead.id}
+                          companyName={lead.companyName}
+                        />
+                      ) : (
+                        <Button variant="ghost" size="sm" disabled onClick={(e) => e.stopPropagation()}>
+                          No Email
+                        </Button>
+                      )}
+
                       <Button
                         variant="ghost"
                         size="sm"
@@ -353,7 +381,7 @@ export default function LeadsPage() {
               <Input label="Email" value={formData.email1} onChange={e => setFormData({ ...formData, email1: e.target.value })} className="md:col-span-2" />
 
               <div className="md:col-span-2 mt-6 flex justify-end gap-3 pt-4 border-t border-gray-100">
-                <Button variant="ghost" onClick={() => setShowModal(false)}>Cancel</Button>
+                <Button variant="ghost" onClick={() => setShowModal(false)} type="button">Cancel</Button>
                 <Button type="submit">Create Lead</Button>
               </div>
             </form>
@@ -362,4 +390,4 @@ export default function LeadsPage() {
       )}
     </PageShell>
   );
-}}
+}
