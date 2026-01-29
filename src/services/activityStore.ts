@@ -1,43 +1,53 @@
 // src/services/activityStore.ts
-export type ActivityType = "EMAIL" | "CALL" | "NOTE" | "TASK";
+type ActivityType = "EMAIL_SENT" | "TASK_CREATED" | "QUOTE_CREATED" | "STATUS_CHANGED";
 
-export type Activity = {
+export type ActivityEvent = {
   id: string;
   leadId: string;
   type: ActivityType;
-  title: string;
-  detail?: string;
+  summary: string;
   createdAt: string; // ISO
   meta?: Record<string, any>;
 };
 
-const STORAGE_KEY = "elite24.activities.v1";
+const KEY = "elite24.activities.v1";
 
-function readAll(): Activity[] {
+function safeRead(): ActivityEvent[] {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+    const raw = localStorage.getItem(KEY);
+    return raw ? (JSON.parse(raw) as ActivityEvent[]) : [];
   } catch {
     return [];
   }
 }
 
-function writeAll(items: Activity[]) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
+function safeWrite(events: ActivityEvent[]) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(events));
+  } catch {
+    // ignore
+  }
 }
 
-export function getActivitiesForLead(leadId: string): Activity[] {
-  return readAll()
-    .filter((a) => a.leadId === leadId)
-    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+export function recordActivity(input: Omit<ActivityEvent, "id" | "createdAt">) {
+  const events = safeRead();
+  const evt: ActivityEvent = {
+    ...input,
+    id: crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+    createdAt: new Date().toISOString(),
+  };
+  events.unshift(evt);
+  safeWrite(events);
+
+  // Let any page re-render / refresh
+  window.dispatchEvent(new CustomEvent("elite24:activity", { detail: { leadId: input.leadId } }));
 }
 
-export function addActivity(activity: Activity) {
-  const items = readAll();
-  items.push(activity);
-  writeAll(items);
+export function listActivities(leadId: string): ActivityEvent[] {
+  return safeRead().filter(e => e.leadId === leadId);
 }
 
 export function getLastActivityISO(leadId: string): string | null {
-  const latest = getActivitiesForLead(leadId)[0];
-  return latest ? latest.createdAt : null;
+  const events = safeRead().filter(e => e.leadId === leadId);
+  return events.length ? events[0].createdAt : null;
 }
