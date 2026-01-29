@@ -1,3 +1,4 @@
+// src/pages/LeadsPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, X, Building2, User } from 'lucide-react';
@@ -8,6 +9,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { SendEmailButton } from "../components/email/SendEmailButton";
+import { getLastActivityISO } from "../services/activityStore";
 
 export default function LeadsPage() {
   const navigate = useNavigate();
@@ -72,6 +74,7 @@ export default function LeadsPage() {
       fetchLeads();
     }, 300);
     return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, search, filters]);
 
   const handleCreateLead = async (e: React.FormEvent) => {
@@ -218,13 +221,19 @@ export default function LeadsPage() {
                     <Badge variant={getPriorityVariant(lead.priority)}>{lead.priority}</Badge>
                   </td>
 
+                  {/* ✅ UPDATED: Local activity first, then API fallback */}
                   <td className="p-4 text-sm text-slate-500">
-                    {lead.activities && lead.activities.length > 0
-                      ? new Date(lead.activities[0].createdAt).toLocaleDateString()
-                      : 'No activity'}
+                    {(() => {
+                      const localLast = getLastActivityISO(lead.id);
+                      const apiLast =
+                        lead.activities && lead.activities.length > 0
+                          ? lead.activities[0].createdAt
+                          : null;
+                      const last = localLast || apiLast;
+                      return last ? new Date(last).toLocaleDateString() : 'No activity';
+                    })()}
                   </td>
 
-                  {/* ✅ UPDATED ACTION CELL: Send Email + Edit */}
                   <td className="p-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <SendEmailButton
@@ -253,22 +262,44 @@ export default function LeadsPage() {
 
       {/* Pagination */}
       <div className="flex justify-center mt-6 gap-2">
-        <Button variant="outline" size="sm" onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}>Previous</Button>
-        <span className="flex items-center px-4 text-sm font-medium text-slate-600">Page {page} of {totalPages}</span>
-        <Button variant="outline" size="sm" onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}>Next</Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPage(p => Math.max(1, p - 1))}
+          disabled={page === 1}
+        >
+          Previous
+        </Button>
+        <span className="flex items-center px-4 text-sm font-medium text-slate-600">
+          Page {page} of {totalPages}
+        </span>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+          disabled={page === totalPages}
+        >
+          Next
+        </Button>
       </div>
 
       {/* Add Lead Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 overflow-y-auto py-10">
           <Card className="w-[800px] max-w-full relative shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <button onClick={() => setShowModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors">
+            <button
+              onClick={() => setShowModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 transition-colors"
+            >
               <X size={24} />
             </button>
+
             <h2 className="text-2xl font-bold mb-6 text-slate-900">Add New Lead</h2>
 
             <form onSubmit={handleCreateLead} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="md:col-span-2 border-b border-gray-100 pb-2 font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">Company Info</div>
+              <div className="md:col-span-2 border-b border-gray-100 pb-2 font-bold text-slate-400 uppercase text-xs tracking-wider mb-2">
+                Company Info
+              </div>
 
               <Input
                 label="Company Name *"
@@ -289,8 +320,16 @@ export default function LeadsPage() {
                 </select>
               </div>
 
-              <Input label="Phone" value={formData.phone} onChange={e => setFormData({ ...formData, phone: e.target.value })} />
-              <Input label="Website" value={formData.website} onChange={e => setFormData({ ...formData, website: e.target.value })} />
+              <Input
+                label="Phone"
+                value={formData.phone}
+                onChange={e => setFormData({ ...formData, phone: e.target.value })}
+              />
+              <Input
+                label="Website"
+                value={formData.website}
+                onChange={e => setFormData({ ...formData, website: e.target.value })}
+              />
 
               <div className="md:col-span-2 grid grid-cols-3 gap-2">
                 <Input label="City" value={formData.city} onChange={e => setFormData({ ...formData, city: e.target.value })} />
@@ -298,9 +337,16 @@ export default function LeadsPage() {
                 <Input label="Zip" value={formData.zip} onChange={e => setFormData({ ...formData, zip: e.target.value })} />
               </div>
 
-              <Input label="Address" value={formData.address} onChange={e => setFormData({ ...formData, address: e.target.value })} className="md:col-span-2" />
+              <Input
+                label="Address"
+                value={formData.address}
+                onChange={e => setFormData({ ...formData, address: e.target.value })}
+                className="md:col-span-2"
+              />
 
-              <div className="md:col-span-2 border-b border-gray-100 pb-2 font-bold text-slate-400 uppercase text-xs tracking-wider mt-4 mb-2">Primary Contact</div>
+              <div className="md:col-span-2 border-b border-gray-100 pb-2 font-bold text-slate-400 uppercase text-xs tracking-wider mt-4 mb-2">
+                Primary Contact
+              </div>
 
               <Input label="Contact Name" value={formData.contactName1} onChange={e => setFormData({ ...formData, contactName1: e.target.value })} />
               <Input label="Role" value={formData.role1} onChange={e => setFormData({ ...formData, role1: e.target.value })} />
@@ -316,4 +362,4 @@ export default function LeadsPage() {
       )}
     </PageShell>
   );
-}
+}}
