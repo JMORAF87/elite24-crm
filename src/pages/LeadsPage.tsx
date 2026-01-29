@@ -1,3 +1,4 @@
+// src/pages/LeadsPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, X, Building2, User } from 'lucide-react';
@@ -17,6 +18,10 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
+
+  // ✅ Forces re-render when activityStore dispatches "elite24:activity"
+  const [, forceTick] = useState(0);
+
   const [filters, setFilters] = useState({
     status: '',
     priority: '',
@@ -24,6 +29,13 @@ export default function LeadsPage() {
     sortBy: 'createdAt',
     sortOrder: 'desc'
   });
+
+  // ✅ Listen for local activity changes (email sent, etc.)
+  useEffect(() => {
+    const handler = () => forceTick((t) => t + 1);
+    window.addEventListener("elite24:activity", handler as any);
+    return () => window.removeEventListener("elite24:activity", handler as any);
+  }, []);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
