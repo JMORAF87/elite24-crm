@@ -1,97 +1,43 @@
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let data = '';
-    req.on('data', (chunk) => (data += chunk));
-    req.on('end', () => {
-      if (!data) return resolve({});
-      try {
-        resolve(JSON.parse(data));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on('error', reject);
-  });
-}
-
-function getStore() {
-  globalThis.__elite24_tasks = globalThis.__elite24_tasks || [];
-  return globalThis.__elite24_tasks;
-}
-
-function makeId() {
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
+import { getStore, makeId, readJson, json } from "./_store.js";
 
 export default async function handler(req, res) {
-  if (req.method === "OPTIONS") {
-    res.statusCode = 204;
-    res.end();
-    return;
-  }
-
-  const tasks = getStore();
-
-  const url = new URL(req.url, `http://${req.headers.host}`);
-  const leadId = url.searchParams.get('leadId');
-  const limit = parseInt(url.searchParams.get('limit') || '200', 10);
+  const store = getStore();
 
   if (req.method === "GET") {
-    const filtered = leadId ? tasks.filter(t => t.leadId === leadId) : tasks;
-    const sliced = filtered.slice(0, limit);
-
-    res.statusCode = 200;
-    res.setHeader("Cache-Control", "no-store");
-    res.setHeader("Content-Type", "application/json; charset=utf-8");
-    res.end(JSON.stringify(sliced));
-    return;
+    const url = new URL(req.url, `https://${req.headers.host}`);
+    const leadId = url.searchParams.get("leadId");
+    const items = leadId ? store.tasks.filter((t) => t.leadId === leadId) : store.tasks;
+    return json(res, 200, { tasks: items });
   }
 
   if (req.method === "POST") {
-    try {
-      const body = await readJson(req);
+    const body = await readJson(req);
+    const task = {
+      id: makeId("task"),
+      leadId: body.leadId,
+      title: body.title || "Task",
+      dueDate: body.dueDate || null,
+      status: body.status || "OPEN",
+      createdAt: new Date().toISOString(),
+    };
+    if (!task.leadId) return json(res, 400, { error: "leadId is required" });
 
-      if (!body || !body.leadId) {
-        res.statusCode = 400;
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        res.end(JSON.stringify({ error: "leadId is required" }));
-        return;
-      }
+    store.tasks.unshift(task);
+    return json(res, 201, { task });
+  }
 
-      if (!body.title) {
-        res.statusCode = 400;
-        res.setHeader("Content-Type", "application/json; charset=utf-8");
-        res.end(JSON.stringify({ error: "title is required" }));
-        return;
-      }
+  if (req.method === "PATCH") {
+    const body = await readJson(req);
+    if (!body.id) return json(res, 400, { error: "id is required" });
 
-      const createdAt = new Date().toISOString();
-      const task = {
-        id: makeId(),
-        leadId: body.leadId,
-        title: body.title,
-        dueDate: body.dueDate || null,
-        status: body.status || "OPEN",
-        createdAt,
-      };
+    const idx = store.tasks.findIndex((t) => t.id === body.id);
+    if (idx === -1) return json(res, 404, { error: "task not found" });
 
-      tasks.unshift(task);
-
-      res.statusCode = 201;
-      res.setHeader("Cache-Control", "no-store");
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.end(JSON.stringify(task));
-      return;
-    } catch (e) {
-      res.statusCode = 400;
-      res.setHeader("Content-Type", "application/json; charset=utf-8");
-      res.end(JSON.stringify({ error: "Invalid JSON body" }));
-      return;
-    }
+    store.tasks[idx] = { ...store.tasks[idx], ...body, updatedAt: new Date().toISOString() };
+    return json(res, 200, { task: store.tasks[idx] });
   }
 
   res.statusCode = 405;
-  res.setHeader("Allow", "GET, POST, OPTIONS");
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.end(JSON.stringify({ error: "Method not allowed" }));
+  res.setHeader("Allow", "GET,POST,PATCH");
+  return json(res, 405, { error: "Method not allowed" });
 }
