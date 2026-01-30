@@ -1,4 +1,3 @@
-// src/pages/LeadsPage.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, Search, X, Building2, User } from 'lucide-react';
@@ -9,7 +8,7 @@ import { Badge } from '../components/ui/Badge';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { SendEmailButton } from "../components/email/SendEmailButton";
-import { getLastActivityISO } from "../services/activityStore";
+import { getLastActivityISO, getLeadStatusOverride } from "../services/activityStore";
 
 export default function LeadsPage() {
   const navigate = useNavigate();
@@ -18,10 +17,6 @@ export default function LeadsPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
-  // ✅ Forces re-render when activityStore dispatches "elite24:activity"
-  const [, forceTick] = useState(0);
-
   const [filters, setFilters] = useState({
     status: '',
     priority: '',
@@ -29,13 +24,6 @@ export default function LeadsPage() {
     sortBy: 'createdAt',
     sortOrder: 'desc'
   });
-
-  // ✅ Listen for local activity changes (email sent, etc.)
-  useEffect(() => {
-    const handler = () => forceTick((t) => t + 1);
-    window.addEventListener("elite24:activity", handler as any);
-    return () => window.removeEventListener("elite24:activity", handler as any);
-  }, []);
 
   // Modal State
   const [showModal, setShowModal] = useState(false);
@@ -137,12 +125,16 @@ export default function LeadsPage() {
     }
   };
 
+  const getEffectiveStatus = (lead: any) => {
+    return getLeadStatusOverride(lead?.id) || lead?.status;
+  };
+
   const getLastActivityText = (lead: any) => {
     // 1) Backend-provided activities (if present)
     const backendISO =
       lead?.activities?.length > 0 ? lead.activities[0]?.createdAt : null;
 
-    // 2) Local activity store fallback (what we’re using for demo realism)
+    // 2) Local activity store fallback (demo realism)
     const localISO = getLastActivityISO?.(lead?.id);
 
     const iso = backendISO || localISO;
@@ -216,85 +208,89 @@ export default function LeadsPage() {
                     Loading leads...
                   </td>
                 </tr>
-              ) : leads.map((lead) => (
-                <tr
-                  key={lead.id}
-                  onClick={() => navigate(`/leads/${lead.id}`)}
-                  className="hover:bg-indigo-50/30 cursor-pointer transition-colors group"
-                >
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
-                        <Building2 size={16} />
-                      </div>
-                      <div>
-                        <div className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
-                          {lead.companyName}
-                        </div>
-                        <div className="text-xs text-slate-500">
-                          {lead.city || 'No City'}, {lead.state || 'State'}
-                        </div>
-                      </div>
-                    </div>
-                  </td>
+              ) : leads.map((lead) => {
+                const status = getEffectiveStatus(lead);
 
-                  <td className="p-4">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">
-                        {lead.contactName1 ? lead.contactName1.charAt(0) : <User size={12} />}
-                      </div>
-                      <div>
-                        <div className="text-sm font-medium text-slate-700">
-                          {lead.contactName1 || 'No Contact'}
+                return (
+                  <tr
+                    key={lead.id}
+                    onClick={() => navigate(`/leads/${lead.id}`)}
+                    className="hover:bg-indigo-50/30 cursor-pointer transition-colors group"
+                  >
+                    <td className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center">
+                          <Building2 size={16} />
                         </div>
-                        <div className="text-[10px] text-slate-400 uppercase">
-                          {lead.role1 || ''}
+                        <div>
+                          <div className="font-bold text-slate-900 group-hover:text-indigo-700 transition-colors">
+                            {lead.companyName}
+                          </div>
+                          <div className="text-xs text-slate-500">
+                            {lead.city || 'No City'}, {lead.state || 'State'}
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  </td>
+                    </td>
 
-                  <td className="p-4">
-                    <Badge variant={getStatusVariant(lead.status)}>{lead.status}</Badge>
-                  </td>
+                    <td className="p-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 rounded-full bg-slate-100 flex items-center justify-center text-[10px] font-bold text-slate-600">
+                          {lead.contactName1 ? lead.contactName1.charAt(0) : <User size={12} />}
+                        </div>
+                        <div>
+                          <div className="text-sm font-medium text-slate-700">
+                            {lead.contactName1 || 'No Contact'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 uppercase">
+                            {lead.role1 || ''}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
 
-                  <td className="p-4">
-                    <Badge variant={getPriorityVariant(lead.priority)}>{lead.priority}</Badge>
-                  </td>
+                    <td className="p-4">
+                      <Badge variant={getStatusVariant(status)}>{status}</Badge>
+                    </td>
 
-                  <td className="p-4 text-sm text-slate-500">
-                    {getLastActivityText(lead)}
-                  </td>
+                    <td className="p-4">
+                      <Badge variant={getPriorityVariant(lead.priority)}>{lead.priority}</Badge>
+                    </td>
 
-                  {/* Action Cell: Send Email + Edit */}
-                  <td className="p-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {lead.email1 ? (
-                        <SendEmailButton
-                          to={lead.email1}
-                          leadId={lead.id}
-                          companyName={lead.companyName}
-                        />
-                      ) : (
-                        <Button variant="ghost" size="sm" disabled onClick={(e) => e.stopPropagation()}>
-                          No Email
+                    <td className="p-4 text-sm text-slate-500">
+                      {getLastActivityText(lead)}
+                    </td>
+
+                    <td className="p-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {lead.email1 ? (
+                          <SendEmailButton
+                            to={lead.email1}
+                            leadId={lead.id}
+                            companyName={lead.companyName}
+                            onSent={fetchLeads}
+                          />
+                        ) : (
+                          <Button variant="ghost" size="sm" disabled onClick={(e) => e.stopPropagation()}>
+                            No Email
+                          </Button>
+                        )}
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/leads/${lead.id}?edit=true`);
+                          }}
+                        >
+                          Edit
                         </Button>
-                      )}
-
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/leads/${lead.id}?edit=true`);
-                        }}
-                      >
-                        Edit
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

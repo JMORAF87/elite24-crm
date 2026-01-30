@@ -1,53 +1,108 @@
 // src/services/activityStore.ts
-type ActivityType = "EMAIL_SENT" | "TASK_CREATED" | "QUOTE_CREATED" | "STATUS_CHANGED";
 
-export type ActivityEvent = {
+export type LeadActivityType =
+  | "EMAIL_SENT"
+  | "TASK_CREATED"
+  | "QUOTE_CREATED"
+  | "STATUS_CHANGED"
+  | "NOTE";
+
+export type LeadActivity = {
   id: string;
   leadId: string;
-  type: ActivityType;
-  summary: string;
+  type: LeadActivityType;
+  title: string;
   createdAt: string; // ISO
   meta?: Record<string, any>;
 };
 
-const KEY = "elite24.activities.v1";
+const ACTIVITY_KEY = "elite24:leadActivities:v1";
+const STATUS_OVERRIDE_KEY = "elite24:leadStatusOverride:v1";
 
-function safeRead(): ActivityEvent[] {
+function safeJsonParse<T>(raw: string | null, fallback: T): T {
+  if (!raw) return fallback;
   try {
-    const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as ActivityEvent[]) : [];
+    return JSON.parse(raw) as T;
   } catch {
-    return [];
+    return fallback;
   }
 }
 
-function safeWrite(events: ActivityEvent[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(events));
-  } catch {
-    // ignore
-  }
+function readActivities(): LeadActivity[] {
+  if (typeof window === "undefined") return [];
+  return safeJsonParse<LeadActivity[]>(localStorage.getItem(ACTIVITY_KEY), []);
 }
 
-export function recordActivity(input: Omit<ActivityEvent, "id" | "createdAt">) {
-  const events = safeRead();
-  const evt: ActivityEvent = {
-    ...input,
-    id: crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
-    createdAt: new Date().toISOString(),
+function writeActivities(list: LeadActivity[]) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(ACTIVITY_KEY, JSON.stringify(list));
+}
+
+function readStatusOverrides(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  return safeJsonParse<Record<string, string>>(
+    localStorage.getItem(STATUS_OVERRIDE_KEY),
+    {}
+  );
+}
+
+function writeStatusOverrides(map: Record<string, string>) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(STATUS_OVERRIDE_KEY, JSON.stringify(map));
+}
+
+function makeId() {
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+export function addLeadActivity(
+  leadId: string,
+  input: Omit<LeadActivity, "id" | "leadId" | "createdAt"> & {
+    createdAt?: string;
+  }
+) {
+  const createdAt = input.createdAt ?? new Date().toISOString();
+  const next: LeadActivity = {
+    id: makeId(),
+    leadId,
+    type: input.type,
+    title: input.title,
+    createdAt,
+    meta: input.meta,
   };
-  events.unshift(evt);
-  safeWrite(events);
 
-  // Let any page re-render / refresh
-  window.dispatchEvent(new CustomEvent("elite24:activity", { detail: { leadId: input.leadId } }));
+  const list = readActivities();
+  list.unshift(next);
+
+  // keep it bounded (demo-friendly)
+  const bounded = list.slice(0, 2000);
+  writeActivities(bounded);
+
+  return next;
 }
 
-export function listActivities(leadId: string): ActivityEvent[] {
-  return safeRead().filter(e => e.leadId === leadId);
+export function getActivitiesForLead(leadId: string): LeadActivity[] {
+  const list = readActivities().filter((a) => a.leadId === leadId);
+  // newest first
+  return list.sort((a, b) => (a.createdAt < b.createdAt ? 1 : -1));
 }
 
 export function getLastActivityISO(leadId: string): string | null {
-  const events = safeRead().filter(e => e.leadId === leadId);
-  return events.length ? events[0].createdAt : null;
+  const items = getActivitiesForLead(leadId);
+  return items[0]?.createdAt ?? null;
+}
+
+export function setLeadStatusOverride(leadId: string, status: string | null) {
+  const map = readStatusOverrides();
+  if (!status) {
+    delete map[leadId];
+  } else {
+    map[leadId] = status;
+  }
+  writeStatusOverrides(map);
+}
+
+export function getLeadStatusOverride(leadId: string): string | null {
+  const map = readStatusOverrides();
+  return map[leadId] ?? null;
 }

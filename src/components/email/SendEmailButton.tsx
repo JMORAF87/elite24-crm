@@ -1,24 +1,21 @@
-// src/components/email/SendEmailButton.tsx
 import React from "react";
 import { Send } from "lucide-react";
 import { sendEmail } from "../../services/email";
-import { recordActivity } from "../../services/activityStore";
+import api from "../../services/api";
+import { addLeadActivity, setLeadStatusOverride } from "../../services/activityStore";
 
 type Props = {
   to: string;
   leadId?: string;
   companyName?: string;
+  onSent?: () => void; // optional: lets parent refetch
 };
 
-export function SendEmailButton({ to, leadId, companyName }: Props) {
+export function SendEmailButton({ to, leadId, companyName, onSent }: Props) {
   const [loading, setLoading] = React.useState(false);
 
-  const onClick = async () => {
-    if (!to) {
-      alert("No email found for this lead.");
-      return;
-    }
-
+  const onClick = async (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation(); // IMPORTANT: prevents row click navigation
     setLoading(true);
 
     const subject = `Elite24 — Quick intro${companyName ? ` (${companyName})` : ""}`;
@@ -35,19 +32,35 @@ export function SendEmailButton({ to, leadId, companyName }: Props) {
         leadId,
       });
 
-      // ✅ Demo realism: log an activity locally so UI can show "Last Activity"
+      // ✅ Local activity + status override so UI can reflect changes immediately
       if (leadId) {
-        recordActivity({
-          leadId,
+        const now = new Date().toISOString();
+
+        addLeadActivity(leadId, {
           type: "EMAIL_SENT",
-          summary: `Email sent to ${to}`,
+          title: `Email sent to ${to}`,
+          createdAt: now,
           meta: { to, subject },
         });
+
+        // Mark as attempted locally (Pipeline/Dashboard can read this)
+        setLeadStatusOverride(leadId, "ATTEMPTED");
+
+        // Best-effort backend update (won’t block demo if backend doesn’t support it)
+        try {
+          await api.patch(`/leads/${leadId}`, {
+            status: "ATTEMPTED",
+            lastActivityAt: now,
+          });
+        } catch {
+          // ignore - demo still works via local overrides
+        }
       }
 
+      onSent?.();
       alert("Email sent ✅ (check inbox)");
-    } catch (e: any) {
-      alert(`Email failed ❌\n\n${e?.message || e}`);
+    } catch (err: any) {
+      alert(`Email failed ❌\n\n${err?.message || err}`);
     } finally {
       setLoading(false);
     }
@@ -59,7 +72,6 @@ export function SendEmailButton({ to, leadId, companyName }: Props) {
       disabled={loading || !to}
       className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-semibold border border-slate-200 hover:bg-slate-50 disabled:opacity-50"
       title={!to ? "Lead has no email" : "Send email"}
-      type="button"
     >
       <Send size={14} />
       {loading ? "Sending..." : "Email"}
