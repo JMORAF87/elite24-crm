@@ -1,45 +1,82 @@
-import { getStore, makeId, readJson, json } from "./_store.js";
+// api/quotes.js (Vercel Node Serverless Function)
+
+function sendJson(res, statusCode, data) {
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.end(JSON.stringify(data));
+}
+
+function readJson(req) {
+  return new Promise((resolve, reject) => {
+    let raw = "";
+    req.on("data", (chunk) => (raw += chunk));
+    req.on("end", () => {
+      if (!raw) return resolve({});
+      try {
+        resolve(JSON.parse(raw));
+      } catch (e) {
+        reject(e);
+      }
+    });
+    req.on("error", reject);
+  });
+}
+
+function getQuery(req) {
+  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+  return url.searchParams;
+}
+
+function makeId(prefix = "quote") {
+  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
 
 export default async function handler(req, res) {
-  const store = getStore();
+  try {
+    if (!globalThis.__elite24_quotes) globalThis.__elite24_quotes = [];
+    const quotes = globalThis.__elite24_quotes;
 
-  if (req.method === "GET") {
-    const url = new URL(req.url, `https://${req.headers.host}`);
-    const leadId = url.searchParams.get("leadId");
-    const items = leadId ? store.quotes.filter((q) => q.leadId === leadId) : store.quotes;
-    return json(res, 200, { quotes: items });
+    const method = req.method || "GET";
+    const q = getQuery(req);
+
+    if (method === "GET") {
+      const leadId = q.get("leadId");
+      const out = leadId ? quotes.filter((x) => x.leadId === leadId) : quotes;
+      return sendJson(res, 200, out);
+    }
+
+    if (method === "POST") {
+      const body = await readJson(req);
+      const { leadId, service, guardType, hoursPerWeek, ratePerHour, notes } = body || {};
+
+      if (!leadId) return sendJson(res, 400, { error: "leadId is required" });
+
+      const hrs = Number(hoursPerWeek || 0);
+      const rate = Number(ratePerHour || 0);
+      const estimatedMonthly = Math.round(((hrs * rate) * 4.33) * 100) / 100;
+
+      const quote = {
+        id: makeId("quote"),
+        leadId,
+        service: service || "Unknown",
+        guardType: guardType || "Unspecified",
+        hoursPerWeek: hrs,
+        ratePerHour: rate,
+        estimatedMonthly,
+        notes: notes || "",
+        status: "DRAFT",
+        createdAt: new Date().toISOString(),
+      };
+
+      quotes.unshift(quote);
+      return sendJson(res, 201, quote);
+    }
+
+    res.setHeader("Allow", "GET, POST");
+    return sendJson(res, 405, { error: "Method not allowed" });
+  } catch (err) {
+    console.error("api/quotes error:", err);
+    return sendJson(res, 500, { error: "Internal Server Error" });
   }
-
-  if (req.method === "POST") {
-    const body = await readJson(req);
-    const quote = {
-      id: makeId("quote"),
-      leadId: body.leadId,
-      service: body.service || "",
-      guardType: body.guardType || "",
-      hrsPerWeek: Number(body.hrsPerWeek || 0),
-      rate: Number(body.rate || 0),
-      status: body.status || "DRAFT",
-      createdAt: new Date().toISOString(),
-    };
-    if (!quote.leadId) return json(res, 400, { error: "leadId is required" });
-
-    store.quotes.unshift(quote);
-    return json(res, 201, { quote });
-  }
-
-  if (req.method === "PATCH") {
-    const body = await readJson(req);
-    if (!body.id) return json(res, 400, { error: "id is required" });
-
-    const idx = store.quotes.findIndex((q) => q.id === body.id);
-    if (idx === -1) return json(res, 404, { error: "quote not found" });
-
-    store.quotes[idx] = { ...store.quotes[idx], ...body, updatedAt: new Date().toISOString() };
-    return json(res, 200, { quote: store.quotes[idx] });
-  }
-
-  res.statusCode = 405;
-  res.setHeader("Allow", "GET,POST,PATCH");
-  return json(res, 405, { error: "Method not allowed" });
 }
