@@ -1,82 +1,63 @@
-// api/quotes.js (Vercel Node Serverless Function)
+// api/quotes.js (CommonJS)
+const { makeId, getStore, readJson, sendJson, handleOptions } = require("./_store");
 
-function sendJson(res, statusCode, data) {
-  res.statusCode = statusCode;
-  res.setHeader("Content-Type", "application/json; charset=utf-8");
-  res.setHeader("Cache-Control", "no-store");
-  res.end(JSON.stringify(data));
-}
+module.exports = async (req, res) => {
+  if (handleOptions(req, res)) return;
 
-function readJson(req) {
-  return new Promise((resolve, reject) => {
-    let raw = "";
-    req.on("data", (chunk) => (raw += chunk));
-    req.on("end", () => {
-      if (!raw) return resolve({});
-      try {
-        resolve(JSON.parse(raw));
-      } catch (e) {
-        reject(e);
-      }
-    });
-    req.on("error", reject);
-  });
-}
-
-function getQuery(req) {
-  const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
-  return url.searchParams;
-}
-
-function makeId(prefix = "quote") {
-  return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`;
-}
-
-export default async function handler(req, res) {
   try {
-    if (!globalThis.__elite24_quotes) globalThis.__elite24_quotes = [];
-    const quotes = globalThis.__elite24_quotes;
+    const store = getStore();
+    const url = new URL(req.url, `http://${req.headers.host}`);
+    const leadIdQ = url.searchParams.get("leadId") || url.searchParams.get("lead_id");
 
-    const method = req.method || "GET";
-    const q = getQuery(req);
-
-    if (method === "GET") {
-      const leadId = q.get("leadId");
-      const out = leadId ? quotes.filter((x) => x.leadId === leadId) : quotes;
-      return sendJson(res, 200, out);
+    if (req.method === "GET") {
+      const quotes = leadIdQ ? store.quotes.filter((q) => q.leadId === leadIdQ) : store.quotes;
+      return sendJson(res, 200, { quotes });
     }
 
-    if (method === "POST") {
+    if (req.method === "POST") {
       const body = await readJson(req);
-      const { leadId, service, guardType, hoursPerWeek, ratePerHour, notes } = body || {};
 
-      if (!leadId) return sendJson(res, 400, { error: "leadId is required" });
+      const leadId = body.leadId || body.lead_id || leadIdQ;
+      const service = body.service || body.serviceType || body.service_type || "";
+      const guardType = body.guardType || body.guard_type || "";
+      const hrsPerWeek = Number(body.hrsPerWeek ?? body.hoursPerWeek ?? body.hrs_week ?? 0);
+      const rate = Number(body.rate ?? body.ratePerHour ?? body.rate_hr ?? 0);
 
-      const hrs = Number(hoursPerWeek || 0);
-      const rate = Number(ratePerHour || 0);
-      const estimatedMonthly = Math.round(((hrs * rate) * 4.33) * 100) / 100;
+      if (!leadId || !service || !guardType || !hrsPerWeek || !rate) {
+        return sendJson(res, 400, { error: "leadId, service, guardType, hrsPerWeek, rate are required" });
+      }
+
+      const now = new Date().toISOString();
+      const monthly = Math.round(hrsPerWeek * rate * 4.33 * 100) / 100;
 
       const quote = {
-        id: makeId("quote"),
+        id: makeId(),
         leadId,
-        service: service || "Unknown",
-        guardType: guardType || "Unspecified",
-        hoursPerWeek: hrs,
-        ratePerHour: rate,
-        estimatedMonthly,
-        notes: notes || "",
-        status: "DRAFT",
-        createdAt: new Date().toISOString(),
+        service,
+        guardType,
+        hrsPerWeek,
+        rate,
+        monthly,
+        status: body.status || "DRAFT",
+        createdAt: now,
       };
 
-      quotes.unshift(quote);
-      return sendJson(res, 201, quote);
+      store.quotes.unshift(quote);
+
+      store.activities.unshift({
+        id: makeId(),
+        leadId,
+        type: "QUOTE_CREATED",
+        detail: `${service} / ${guardType} (${hrsPerWeek}h @ $${rate})`,
+        createdAt: now,
+      });
+
+      return sendJson(res, 201, { quote, quotes: store.quotes.filter((q) => q.leadId === leadId) });
     }
 
-    res.setHeader("Allow", "GET, POST");
     return sendJson(res, 405, { error: "Method not allowed" });
   } catch (err) {
-    console.error("api/quotes error:", err);
-    return sendJson(res, 500, { error: "Internal Server Error" });
+    console.error("quotes error:", err);
+    return sendJson(res, 500, { error: "Internal server error", message: String(err?.message || err) });
   }
-}
+};
