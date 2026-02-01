@@ -1,5 +1,9 @@
 // api/email/send.js
 import { Resend } from "resend";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const { makeId, getStore } = require("../_store"); // api/_store.js
 
 function escapeHtml(s = "") {
   return s
@@ -26,7 +30,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Missing RESEND_API_KEY in environment" });
     }
 
-    const { to, subject, html, text, from } = req.body || {};
+    const { leadId, to, subject, html, text, from } = req.body || {};
 
     if (!to || !subject || (!html && !text)) {
       return res.status(400).json({
@@ -48,13 +52,43 @@ export default async function handler(req, res) {
       text: text || undefined,
     });
 
-    // Resend SDK returns either data or throws; keep it explicit
+    // ---- TRACKING (store + activity + status) ----
+    // Only do this if leadId was provided by the frontend
+    if (leadId) {
+      const store = getStore();
+      const now = new Date().toISOString();
+
+      // log email
+      store.emails.unshift({
+        id: makeId(),
+        leadId,
+        to: Array.isArray(to) ? to.join(", ") : to,
+        subject,
+        html: finalHtml,
+        createdAt: now,
+      });
+
+      // activity
+      store.activities.unshift({
+        id: makeId(),
+        leadId,
+        type: "EMAIL_SENT",
+        detail: subject,
+        createdAt: now,
+      });
+
+      // move lead to ATTEMPTED (only if your leads live in the same store)
+      const lead = store.leads.find((l) => String(l.id) === String(leadId));
+      if (lead) {
+        if (!lead.status || lead.status === "NEW") lead.status = "ATTEMPTED";
+        lead.updatedAt = now;
+      }
+    }
+
     return res.status(200).json({ ok: true, result });
   } catch (err) {
-    const message =
-      err?.message || "Unknown error sending email";
+    const message = err?.message || "Unknown error sending email";
 
-    // Don't leak internal objects; just enough to debug
     return res.status(400).json({
       ok: false,
       error: message,
