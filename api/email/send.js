@@ -1,12 +1,9 @@
 // api/email/send.js
 import { Resend } from "resend";
-import { createRequire } from "module";
-
-const require = createRequire(import.meta.url);
-const { makeId, getStore } = require("../_store"); // api/_store.js
+import store, { addActivity, bumpLeadStatus } from "../_store.js";
 
 function escapeHtml(s = "") {
-  return s
+  return String(s)
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -14,12 +11,38 @@ function escapeHtml(s = "") {
     .replaceAll("'", "&#039;");
 }
 
+// Robust JSON body read for Vercel serverless (/api folder) + Next-style req.body
+async function readJsonBody(req) {
+  // If a platform already parsed JSON:
+  if (req.body && typeof req.body === "object") return req.body;
+
+  // If body is a string (happens sometimes):
+  if (typeof req.body === "string" && req.body.trim()) {
+    try {
+      return JSON.parse(req.body);
+    } catch {
+      return {};
+    }
+  }
+
+  // Raw Node request stream fallback:
+  const chunks = [];
+  for await (const chunk of req) chunks.push(chunk);
+  const raw = Buffer.concat(chunks).toString("utf8");
+  if (!raw.trim()) return {};
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
 export default async function handler(req, res) {
   // Only allow POST
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.setHeader("Allow", "POST");
-    return res.json({ error: "Method not allowed" });
+    return res.json({ ok: false, error: "Method not allowed" });
   }
 
   try {
@@ -27,13 +50,17 @@ export default async function handler(req, res) {
     const defaultFrom = process.env.RESEND_FROM || "onboarding@resend.dev";
 
     if (!apiKey) {
-      return res.status(500).json({ error: "Missing RESEND_API_KEY in environment" });
+      return res
+        .status(500)
+        .json({ ok: false, error: "Missing RESEND_API_KEY in environment" });
     }
 
-    const { leadId, to, subject, html, text, from } = req.body || {};
+    const body = await readJsonBody(req);
+    const { leadId, to, subject, html, text, from } = body || {};
 
     if (!to || !subject || (!html && !text)) {
       return res.status(400).json({
+        ok: false,
         error: "Missing required fields: to, subject, and (html or text)",
         received: { to: !!to, subject: !!subject, html: !!html, text: !!text },
       });
@@ -52,44 +79,40 @@ export default async function handler(req, res) {
       text: text || undefined,
     });
 
-    // ---- TRACKING (store + activity + status) ----
-    // Only do this if leadId was provided by the frontend
+    // --------- TRACKING STEP (activity + pipeline) ----------
+    // Only track if leadId is provided by the frontend.
+    // (If leadId is missing, the email still sends, but nothing will show in Attempted/Activity.)
     if (leadId) {
-      const store = getStore();
       const now = new Date().toISOString();
 
-      // log email
-      store.emails.unshift({
-        id: makeId(),
-        leadId,
-        to: Array.isArray(to) ? to.join(", ") : to,
-        subject,
-        html: finalHtml,
-        createdAt: now,
-      });
-
-      // activity
-      store.activities.unshift({
-        id: makeId(),
+      // Activity log
+      addActivity({
         leadId,
         type: "EMAIL_SENT",
-        detail: subject,
         createdAt: now,
+        meta: {
+          to: Array.isArray(to) ? to : [to],
+          subject,
+          // Resend returns different shapes depending on version;
+          // store whatever we can get.
+          messageId: result?.data?.id || result?.id || null,
+        },
       });
 
-      // move lead to ATTEMPTED (only if your leads live in the same store)
-      const lead = store.leads.find((l) => String(l.id) === String(leadId));
-      if (lead) {
-        if (!lead.status || lead.status === "NEW") lead.status = "ATTEMPTED";
-        lead.updatedAt = now;
-      }
+      // Move pipeline status forward (never backward)
+      bumpLeadStatus(leadId, "ATTEMPTED", now);
     }
 
-    return res.status(200).json({ ok: true, result });
+    return res.status(200).json({
+      ok: true,
+      result,
+      tracking: leadId
+        ? { recorded: true }
+        : { recorded: false, reason: "Missing leadId in request body" },
+    });
   } catch (err) {
     const message = err?.message || "Unknown error sending email";
-
-    return res.status(400).json({
+    return res.status(500).json({
       ok: false,
       error: message,
     });
