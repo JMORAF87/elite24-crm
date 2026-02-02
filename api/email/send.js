@@ -1,9 +1,8 @@
 // api/email/send.js
 import { Resend } from "resend";
-import store, { addActivity, bumpLeadStatus } from "../_store.js";
 
 function escapeHtml(s = "") {
-  return String(s)
+  return s
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -11,25 +10,31 @@ function escapeHtml(s = "") {
     .replaceAll("'", "&#039;");
 }
 
-// Robust JSON body read for Vercel serverless (/api folder) + Next-style req.body
-async function readJsonBody(req) {
-  // If a platform already parsed JSON:
-  if (req.body && typeof req.body === "object") return req.body;
+function getBaseUrl(req) {
+  const proto = (req.headers["x-forwarded-proto"] || "https").toString();
+  const host = (req.headers["x-forwarded-host"] || req.headers.host).toString();
+  return `${proto}://${host}`;
+}
 
-  // If body is a string (happens sometimes):
-  if (typeof req.body === "string" && req.body.trim()) {
-    try {
-      return JSON.parse(req.body);
-    } catch {
-      return {};
-    }
+function leadIdFromReferer(req) {
+  const ref = req.headers.referer || req.headers.referrer;
+  if (!ref) return null;
+  try {
+    const u = new URL(ref.toString());
+    const parts = u.pathname.split("/leads/");
+    if (parts.length < 2) return null;
+    return parts[1].split(/[/?#]/)[0] || null;
+  } catch {
+    return null;
   }
+}
 
-  // Raw Node request stream fallback:
+async function getJsonBody(req) {
+  if (req.body && typeof req.body === "object") return req.body;
   const chunks = [];
-  for await (const chunk of req) chunks.push(chunk);
+  for await (const c of req) chunks.push(c);
+  if (!chunks.length) return {};
   const raw = Buffer.concat(chunks).toString("utf8");
-  if (!raw.trim()) return {};
   try {
     return JSON.parse(raw);
   } catch {
@@ -38,11 +43,10 @@ async function readJsonBody(req) {
 }
 
 export default async function handler(req, res) {
-  // Only allow POST
   if (req.method !== "POST") {
     res.statusCode = 405;
     res.setHeader("Allow", "POST");
-    return res.json({ ok: false, error: "Method not allowed" });
+    return res.json({ error: "Method not allowed" });
   }
 
   try {
@@ -50,19 +54,26 @@ export default async function handler(req, res) {
     const defaultFrom = process.env.RESEND_FROM || "onboarding@resend.dev";
 
     if (!apiKey) {
-      return res
-        .status(500)
-        .json({ ok: false, error: "Missing RESEND_API_KEY in environment" });
+      return res.status(500).json({ error: "Missing RESEND_API_KEY in environment" });
     }
 
-    const body = await readJsonBody(req);
-    const { leadId, to, subject, html, text, from } = body || {};
+    const body = await getJsonBody(req);
+    const { to, subject, html, text, from } = body || {};
+
+    // leadId can be in body, query, or referer fallback
+    let leadId = body?.leadId || null;
+    if (!leadId) {
+      try {
+        const url = new URL(req.url, `http://${req.headers.host}`);
+        leadId = url.searchParams.get("leadId");
+      } catch {}
+    }
+    if (!leadId) leadId = leadIdFromReferer(req);
 
     if (!to || !subject || (!html && !text)) {
       return res.status(400).json({
-        ok: false,
         error: "Missing required fields: to, subject, and (html or text)",
-        received: { to: !!to, subject: !!subject, html: !!html, text: !!text },
+        received: { to: !!to, subject: !!subject, html: !!html, text: !!text, leadId: !!leadId },
       });
     }
 
@@ -79,42 +90,30 @@ export default async function handler(req, res) {
       text: text || undefined,
     });
 
-    // --------- TRACKING STEP (activity + pipeline) ----------
-    // Only track if leadId is provided by the frontend.
-    // (If leadId is missing, the email still sends, but nothing will show in Attempted/Activity.)
+    // Log activity (best-effort; don't fail the email if logging fails)
     if (leadId) {
-      const now = new Date().toISOString();
-
-      // Activity log
-      addActivity({
-        leadId,
-        type: "EMAIL_SENT",
-        createdAt: now,
-        meta: {
-          to: Array.isArray(to) ? to : [to],
-          subject,
-          // Resend returns different shapes depending on version;
-          // store whatever we can get.
-          messageId: result?.data?.id || result?.id || null,
-        },
-      });
-
-      // Move pipeline status forward (never backward)
-      bumpLeadStatus(leadId, "ATTEMPTED", now);
+      try {
+        const baseUrl = getBaseUrl(req);
+        await fetch(`${baseUrl}/api/activities`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            leadId,
+            type: "email_sent",
+            title: `Email sent: ${subject}`,
+            meta: { to: Array.isArray(to) ? to : [to] },
+          }),
+        });
+      } catch {
+        // swallow
+      }
     }
 
-    return res.status(200).json({
-      ok: true,
-      result,
-      tracking: leadId
-        ? { recorded: true }
-        : { recorded: false, reason: "Missing leadId in request body" },
-    });
+    return res.status(200).json({ ok: true, result, tracked: !!leadId, leadId: leadId || null });
   } catch (err) {
-    const message = err?.message || "Unknown error sending email";
-    return res.status(500).json({
+    return res.status(400).json({
       ok: false,
-      error: message,
+      error: err?.message || "Unknown error sending email",
     });
   }
 }

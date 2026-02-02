@@ -1,57 +1,81 @@
-// api/tasks.js (CommonJS)
-const { makeId, getStore, readJson, sendJson, handleOptions } = require("./_store");
+// api/tasks.js
+import store, { isoNow, uid, toDateOnly } from "./_store.js";
 
-module.exports = async (req, res) => {
-  if (handleOptions(req, res)) return;
+function getUrl(req) {
+  return new URL(req.url, `http://${req.headers.host}`);
+}
 
+async function getJsonBody(req) {
+  if (req.body && typeof req.body === "object") return req.body;
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  if (!chunks.length) return {};
+  const raw = Buffer.concat(chunks).toString("utf8");
   try {
-    const store = getStore();
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const leadIdQ = url.searchParams.get("leadId") || url.searchParams.get("lead_id");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+export default async function handler(req, res) {
+  try {
+    const url = getUrl(req);
+    const leadId = url.searchParams.get("leadId") || undefined;
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.max(0, Number(limitRaw) || 0) : 0;
 
     if (req.method === "GET") {
-      const tasks = leadIdQ ? store.tasks.filter((t) => t.leadId === leadIdQ) : store.tasks;
-      return sendJson(res, 200, { tasks });
+      let tasks = Array.isArray(store.tasks) ? store.tasks : [];
+      if (leadId) tasks = tasks.filter((t) => t.leadId === leadId);
+
+      tasks = tasks.sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+      );
+
+      if (limit) tasks = tasks.slice(0, limit);
+
+      return res.status(200).json({ ok: true, tasks });
     }
 
     if (req.method === "POST") {
-      const body = await readJson(req);
+      const body = await getJsonBody(req);
 
-      const leadId = body.leadId || body.lead_id || leadIdQ;
-      const title = body.title || body.name || body.task || "";
-      const dueDate = body.dueDate || body.due || body.date || null;
+      const finalLeadId = body.leadId || leadId;
+      const title = (body.title || body.name || "").toString().trim();
+      const dueDate = toDateOnly(body.dueDate || body.due || body.date);
 
-      if (!leadId || !title) {
-        return sendJson(res, 400, { error: "leadId and title are required" });
+      if (!finalLeadId || !title) {
+        return res.status(400).json({
+          ok: false,
+          error: "Missing required fields: leadId and title",
+          received: { leadId: !!finalLeadId, title: !!title },
+        });
       }
 
-      const now = new Date().toISOString();
       const task = {
-        id: makeId(),
-        leadId,
+        id: uid("task_"),
+        leadId: finalLeadId,
         title,
         dueDate,
         completed: false,
-        createdAt: now,
+        createdAt: isoNow(),
+        updatedAt: isoNow(),
       };
 
+      store.tasks = Array.isArray(store.tasks) ? store.tasks : [];
       store.tasks.unshift(task);
 
-      // Activity log (optional but helps “tracking”)
-      store.activities.unshift({
-        id: makeId(),
-        leadId,
-        type: "TASK_CREATED",
-        detail: title,
-        createdAt: now,
-      });
-
-      return sendJson(res, 201, { task, tasks: store.tasks.filter((t) => t.leadId === leadId) });
+      return res.status(200).json({ ok: true, task });
     }
 
-    return sendJson(res, 405, { error: "Method not allowed" });
+    res.statusCode = 405;
+    res.setHeader("Allow", "GET, POST");
+    return res.json({ ok: false, error: "Method not allowed" });
   } catch (err) {
-    console.error("tasks error:", err);
-    return sendJson(res, 500, { error: "Internal server error", message: String(err?.message || err) });
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Server error in /api/tasks",
+    });
   }
-};
+}

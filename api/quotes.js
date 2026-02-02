@@ -1,63 +1,88 @@
-// api/quotes.js (CommonJS)
-const { makeId, getStore, readJson, sendJson, handleOptions } = require("./_store");
+// api/quotes.js
+import store, { isoNow, uid } from "./_store.js";
 
-module.exports = async (req, res) => {
-  if (handleOptions(req, res)) return;
+function getUrl(req) {
+  return new URL(req.url, `http://${req.headers.host}`);
+}
 
+async function getJsonBody(req) {
+  if (req.body && typeof req.body === "object") return req.body;
+  const chunks = [];
+  for await (const c of req) chunks.push(c);
+  if (!chunks.length) return {};
+  const raw = Buffer.concat(chunks).toString("utf8");
   try {
-    const store = getStore();
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    const leadIdQ = url.searchParams.get("leadId") || url.searchParams.get("lead_id");
+    return JSON.parse(raw);
+  } catch {
+    return {};
+  }
+}
+
+function num(x, fallback = 0) {
+  const n = Number(x);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+export default async function handler(req, res) {
+  try {
+    const url = getUrl(req);
+    const leadId = url.searchParams.get("leadId") || undefined;
+    const limitRaw = url.searchParams.get("limit");
+    const limit = limitRaw ? Math.max(0, Number(limitRaw) || 0) : 0;
 
     if (req.method === "GET") {
-      const quotes = leadIdQ ? store.quotes.filter((q) => q.leadId === leadIdQ) : store.quotes;
-      return sendJson(res, 200, { quotes });
+      let quotes = Array.isArray(store.quotes) ? store.quotes : [];
+      if (leadId) quotes = quotes.filter((q) => q.leadId === leadId);
+
+      quotes = quotes.sort(
+        (a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0)
+      );
+
+      if (limit) quotes = quotes.slice(0, limit);
+
+      return res.status(200).json({ ok: true, quotes });
     }
 
     if (req.method === "POST") {
-      const body = await readJson(req);
+      const body = await getJsonBody(req);
+      const finalLeadId = body.leadId || leadId;
 
-      const leadId = body.leadId || body.lead_id || leadIdQ;
-      const service = body.service || body.serviceType || body.service_type || "";
-      const guardType = body.guardType || body.guard_type || "";
-      const hrsPerWeek = Number(body.hrsPerWeek ?? body.hoursPerWeek ?? body.hrs_week ?? 0);
-      const rate = Number(body.rate ?? body.ratePerHour ?? body.rate_hr ?? 0);
-
-      if (!leadId || !service || !guardType || !hrsPerWeek || !rate) {
-        return sendJson(res, 400, { error: "leadId, service, guardType, hrsPerWeek, rate are required" });
+      if (!finalLeadId) {
+        return res.status(400).json({ ok: false, error: "Missing leadId" });
       }
 
-      const now = new Date().toISOString();
-      const monthly = Math.round(hrsPerWeek * rate * 4.33 * 100) / 100;
+      // keep flexible so it matches your UI payload
+      const service = (body.service || "").toString().trim();
+      const guardType = (body.guardType || body.guard || "").toString().trim();
+      const hrsPerWeek = num(body.hrsPerWeek ?? body.hoursPerWeek ?? body.hours, 0);
+      const ratePerHr = num(body.ratePerHr ?? body.rate ?? body.hourlyRate, 0);
 
       const quote = {
-        id: makeId(),
-        leadId,
+        id: uid("quote_"),
+        leadId: finalLeadId,
+        status: (body.status || "DRAFT").toString(),
         service,
         guardType,
         hrsPerWeek,
-        rate,
-        monthly,
-        status: body.status || "DRAFT",
-        createdAt: now,
+        ratePerHr,
+        estimatedMonthly: num(body.estimatedMonthly, hrsPerWeek * ratePerHr * 4.33),
+        createdAt: isoNow(),
+        updatedAt: isoNow(),
       };
 
+      store.quotes = Array.isArray(store.quotes) ? store.quotes : [];
       store.quotes.unshift(quote);
 
-      store.activities.unshift({
-        id: makeId(),
-        leadId,
-        type: "QUOTE_CREATED",
-        detail: `${service} / ${guardType} (${hrsPerWeek}h @ $${rate})`,
-        createdAt: now,
-      });
-
-      return sendJson(res, 201, { quote, quotes: store.quotes.filter((q) => q.leadId === leadId) });
+      return res.status(200).json({ ok: true, quote });
     }
 
-    return sendJson(res, 405, { error: "Method not allowed" });
+    res.statusCode = 405;
+    res.setHeader("Allow", "GET, POST");
+    return res.json({ ok: false, error: "Method not allowed" });
   } catch (err) {
-    console.error("quotes error:", err);
-    return sendJson(res, 500, { error: "Internal server error", message: String(err?.message || err) });
+    return res.status(500).json({
+      ok: false,
+      error: err?.message || "Server error in /api/quotes",
+    });
   }
-};
+}
