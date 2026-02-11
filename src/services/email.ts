@@ -6,11 +6,16 @@ export async function sendEmail(payload: {
     text?: string;
     leadId?: string;
   }) {
-    const res = await fetch(`/api/email/send`, {
+    const res = await fetch("/api/email/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+      body: JSON.stringify({
+        leadId: lead.id,   // <-- THIS is the missing piece
+        to,
+        subject,
+        html,
+      }),
+    });    
   
     const raw = await res.text();
     let data: any = null;
