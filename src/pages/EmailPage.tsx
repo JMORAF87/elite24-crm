@@ -86,26 +86,19 @@ export default function EmailPage() {
 
             const leadId = selectedLead.id;
 
-await api.post('/email/send', {
-  leadId,
-  to: emailForm.to,
-  subject: emailForm.subject,
-  html: emailForm.body.replace(/\n/g, '<br>')
-});
+            await api.post('/email/send', {
+                leadId,
+                to: emailForm.to,
+                subject: emailForm.subject,
+                html: emailForm.body.replace(/\n/g, '<br>')
+            });
 
-// 1) Log activity (shows up on lead Activity tab once you wire the UI to /activities)
-await api.post('/activities', {
-  leadId,
-  type: 'EMAIL_SENT',
-  meta: { to: emailForm.to, subject: emailForm.subject }
-});
+            // Backend already logs EMAIL activity; just update pipeline status if needed
+            if (selectedLead.status === 'NEW') {
+                await api.patch(`/leads/${leadId}/status`, { status: 'ATTEMPTED' });
+            }
 
-// 2) Move NEW -> ATTEMPTED automatically (so Pipeline updates)
-if (selectedLead.status === 'NEW') {
-  await api.patch(`/leads/${leadId}/status`, { status: 'ATTEMPTED' });
-}
-
-alert('Email sent!');
+            alert('Email sent!');
 setShowCompose(false);
 fetchEmails();
 

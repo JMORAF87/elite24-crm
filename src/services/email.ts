@@ -1,29 +1,30 @@
-// src/services/email.ts
-export async function sendEmail(payload: {
-    to: string;
-    subject: string;
-    html?: string;
-    text?: string;
-    leadId?: string;
-  }) {
-    const res = await fetch("/api/email/send", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        leadId: lead.id,   // <-- THIS is the missing piece
-        to,
-        subject,
-        html,
-      }),
-    });    
-  
-    const raw = await res.text();
-    let data: any = null;
-    try { data = JSON.parse(raw); } catch {}
-  
-    if (!res.ok) {
-      throw new Error(data?.error || raw || "Email send failed");
-    }
-  
-    return data;
-  }  
+import api from "./api";
+
+type SendEmailPayload = {
+  to: string;
+  subject: string;
+  html?: string;
+  text?: string;
+  leadId?: string;
+};
+
+// Thin wrapper around the authenticated /email/send backend route
+export async function sendEmail(payload: SendEmailPayload) {
+  const { to, subject, html, text, leadId } = payload;
+
+  if (!leadId) {
+    throw new Error("leadId is required to send an email");
+  }
+
+  const finalHtml =
+    html ?? (text ? text.replace(/\n/g, "<br>") : "<p>(no content)</p>");
+
+  const res = await api.post("/email/send", {
+    leadId,
+    to,
+    subject,
+    html: finalHtml,
+  });
+
+  return res.data;
+}

@@ -2,7 +2,10 @@ import React from "react";
 import { Send } from "lucide-react";
 import { sendEmail } from "../../services/email";
 import api from "../../services/api";
-import { addLeadActivity, setLeadStatusOverride } from "../../services/activityStore";
+import {
+  addLeadActivity,
+  setLeadStatusOverride,
+} from "../../services/activityStore";
 
 type Props = {
   to: string;
@@ -18,7 +21,9 @@ export function SendEmailButton({ to, leadId, companyName, onSent }: Props) {
     e.stopPropagation(); // IMPORTANT: prevents row click navigation
     setLoading(true);
 
-    const subject = `Elite24 — Quick intro${companyName ? ` (${companyName})` : ""}`;
+    const subject = `Elite24 — Quick intro${
+      companyName ? ` (${companyName})` : ""
+    }`;
     const text =
       `Hi${companyName ? ` ${companyName}` : ""},\n\n` +
       "Quick intro — this is a demo email sent from the Elite24 CRM using Resend.\n\n" +
@@ -46,12 +51,9 @@ export function SendEmailButton({ to, leadId, companyName, onSent }: Props) {
         // Mark as attempted locally (Pipeline/Dashboard can read this)
         setLeadStatusOverride(leadId, "ATTEMPTED");
 
-        // Best-effort backend update (won’t block demo if backend doesn’t support it)
+        // Best-effort backend update for status on the real backend
         try {
-          await api.patch(`/leads/${leadId}`, {
-            status: "ATTEMPTED",
-            lastActivityAt: now,
-          });
+          await api.patch(`/leads/${leadId}/status`, { status: "ATTEMPTED" });
         } catch {
           // ignore - demo still works via local overrides
         }

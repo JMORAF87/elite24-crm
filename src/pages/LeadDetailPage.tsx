@@ -123,7 +123,7 @@ export default function LeadDetailPage() {
             // 3. Fetch auxiliary data
             try {
                 const [activityRes, taskRes, quoteRes, settingsRes] = await Promise.all([
-                    api.get(`/activities?leadId=${id}`),
+                    api.get(`/activities/lead/${id}`),
                     api.get(`/tasks?leadId=${id}`),
                     api.get(`/quotes?leadId=${id}`),
                     api.get('/settings')

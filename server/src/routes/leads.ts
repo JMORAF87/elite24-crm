@@ -146,6 +146,28 @@ router.put('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
     }
 });
 
+// Partial update lead (used by frontend detail page)
+router.patch('/:id', async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+        const { id } = req.params;
+
+        const lead = await prisma.lead.update({
+            where: { id },
+            data: req.body,
+            include: {
+                _count: {
+                    select: { activities: true, tasks: true, quotes: true }
+                }
+            }
+        });
+
+        res.json(lead);
+    } catch (error) {
+        console.error('Patch lead error:', error);
+        res.status(500).json({ error: 'Failed to update lead' });
+    }
+});
+
 // Update lead status
 router.patch('/:id/status', async (req: AuthRequest, res: Response): Promise<void> => {
     try {
